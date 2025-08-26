@@ -1,0 +1,37 @@
+# Python зависимости для MCP сервера синтаксис-помощника 1С
+
+# FastAPI и веб-сервер
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+
+# Elasticsearch клиент
+elasticsearch==8.11.0
+
+# Парсинг данных
+pydantic==2.5.0
+beautifulsoup4==4.12.2
+lxml==4.9.3
+
+# Работа с архивами (.hbk файлы)
+py7zr==0.20.8
+
+# HTTP клиент для внешних запросов
+httpx==0.25.2
+
+# Логирование и конфигурация
+python-json-logger==2.0.7
+python-dotenv==1.0.0
+
+# Мониторинг файловой системы (если понадобится)
+watchdog==3.0.0
+
+# Тестирование
+pytest==7.4.3
+pytest-asyncio==0.21.1
+pytest-cov==4.1.0
+
+# Разработка
+black==23.11.0
+isort==5.12.0
+flake8==6.1.0
+mypy==1.7.1
