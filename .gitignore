@@ -38,9 +38,8 @@ pip-delete-this-directory.txt
 htmlcov/
 .tox/
 .nox/
-.coverage
-.coverage.*
-.cache
+.coverage*
+.cache/
 nosetests.xml
 coverage.xml
 *.cover
@@ -63,11 +62,24 @@ venv.bak/
 .dmypy.json
 dmypy.json
 
-# IDE
+# IDE - General
 .idea/
 .vscode/
 *.swp
 *.swo
+
+# IDE - VS Code specific
+.vscode/settings.json
+.vscode/launch.json
+.vscode/tasks.json
+
+# IDE - PyCharm specific
+.idea/workspace.xml
+.idea/tasks.xml
+.idea/dictionaries/
+
+# GitHub instructions (local development rules)
+.github/instructions/
 
 # OS
 .DS_Store
@@ -88,6 +100,49 @@ data/hbk/*.hbk
 # Elasticsearch data (handled by Docker volumes)
 data/elasticsearch/
 
-# Test artifacts
-.pytest_cache/
-htmlcov/
+# Temporary files created by parsers
+temp_*/
+help1c_temp_*/
+
+# Backup files
+*.bak
+*.backup
+*.old
+
+# Performance profiling
+*.prof
+*.pstats
+
+# Local development overrides
+local_config.py
+dev_config.py
+
+# Documentation build artifacts
+docs/_build/
+docs/.doctrees/
+
+# Log files (additional patterns)
+*.log
+logs/
+
+# Development databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Large test files
+test_data/*.hbk
+test_data/large_*
+
+# Editor temporary files
+*~
+.#*
+\#*#
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+
+# Local development scripts
+run_local.py
+test_local.py
+debug_*.py
