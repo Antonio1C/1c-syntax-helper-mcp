@@ -3,6 +3,7 @@
 import asyncio
 import sys
 import time
+import pytest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -10,6 +11,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from src.search.search_service import search_service
 
 
+@pytest.mark.asyncio
 async def test_search():
     """Тест системы поиска."""
     print("=== Тест 4: Система поиска ===")

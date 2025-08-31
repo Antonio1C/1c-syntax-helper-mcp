@@ -2,8 +2,6 @@
 """Парсер .hbk файлов (архивы документации 1С)."""
 
 import os
-import zipfile
-import py7zr
 import tempfile
 import re
 from typing import Optional, List, Dict, Any
@@ -11,6 +9,7 @@ from pathlib import Path
 
 from src.models.doc_models import HBKFile, HBKEntry, ParsedHBK, CategoryInfo
 from src.core.logging import get_logger
+from src.parsers.html_parser import HTMLParser
 from src.core.utils import (
     safe_subprocess_run, 
     SafeSubprocessError, 
@@ -36,6 +35,7 @@ class HBKParser:
         self._zip_command = None
         self._archive_path = None
         self._max_file_size = MAX_FILE_SIZE_MB * 1024 * 1024  # MB в байты
+        self.html_parser = HTMLParser()  # Инициализируем HTML парсер
     
     def parse_file(self, file_path: str) -> Optional[ParsedHBK]:
         """Парсит .hbk файл и извлекает содержимое."""
@@ -86,83 +86,18 @@ class HBKParser:
             return result
     
     def _extract_archive(self, file_path: Path) -> List[HBKEntry]:
-        """Извлекает содержимое архива."""
-        entries = []
-        
-        # Сначала пробуем через внешний 7zip (наиболее надежный метод)
+        """Извлекает содержимое архива через внешний 7zip."""
         try:
             entries = self._extract_external_7z(file_path)
             if entries:
                 logger.info("Файл успешно обработан через внешний 7zip")
                 return entries
+            else:
+                logger.error(f"Не удалось извлечь файлы из архива: {file_path}")
+                return []
         except Exception as e:
-            logger.debug(f"Не удалось обработать через внешний 7zip: {e}")
-        
-        # Fallback: пробуем как 7Z архив через py7zr
-        try:
-            entries = self._extract_7z(file_path)
-            if entries:
-                logger.info("Файл успешно обработан как 7Z архив")
-                return entries
-        except Exception as e:
-            logger.debug(f"Не удалось обработать как 7Z: {e}")
-        
-        # Fallback: пробуем как ZIP архив
-        try:
-            entries = self._extract_zip(file_path)
-            if entries:
-                logger.info("Файл успешно обработан как ZIP архив")
-                return entries
-        except Exception as e:
-            logger.debug(f"Не удалось обработать как ZIP: {e}")
-        
-        logger.error(f"Не удалось определить формат архива: {file_path}")
-        return []
-    
-    def _extract_zip(self, file_path: Path) -> List[HBKEntry]:
-        """Извлекает содержимое ZIP архива."""
-        entries = []
-        
-        with zipfile.ZipFile(file_path, 'r') as zip_file:
-            for info in zip_file.infolist():
-                entry = HBKEntry(
-                    path=info.filename,
-                    size=info.file_size,
-                    is_dir=info.is_dir()
-                )
-                
-                # Читаем содержимое только для небольших файлов
-                if not entry.is_dir and entry.size < self._max_file_size // 100:  # < 1% от максимального размера
-                    try:
-                        entry.content = zip_file.read(info.filename)
-                    except Exception as e:
-                        logger.warning(f"Не удалось прочитать {info.filename}: {e}")
-                
-                entries.append(entry)
-        
-        return entries
-    
-    def _extract_7z(self, file_path: Path) -> List[HBKEntry]:
-        """Извлекает содержимое 7Z архива."""
-        entries = []
-        
-        with py7zr.SevenZipFile(file_path, mode='r') as sz_file:
-            for info in sz_file.list():
-                entry = HBKEntry(
-                    path=info.filename,
-                    size=info.uncompressed if hasattr(info, 'uncompressed') else 0,
-                    is_dir=info.is_directory if hasattr(info, 'is_directory') else False
-                )
-                entries.append(entry)
-            
-            # Извлекаем содержимое файлов
-            if entries:
-                extracted = sz_file.readall()
-                for entry in entries:
-                    if not entry.is_dir and entry.path in extracted:
-                        entry.content = extracted[entry.path].read()
-        
-        return entries
+            logger.error(f"Ошибка обработки архива через 7zip: {e}")
+            return []
     
     def _analyze_structure(self, entries: List[HBKEntry], result: ParsedHBK):
         """Анализирует структуру архива и извлекает документацию."""
@@ -171,9 +106,30 @@ class HBKParser:
         html_files = 0
         st_files = 0
         category_files = 0
+        processed_html = 0  # Счетчик обработанных HTML файлов
+        min_per_type = 3  # Минимум документов каждого типа
+        max_files_per_batch = 10  # Максимум файлов за один проход
         
-        # Группируем файлы по каталогам
-        directories = {}
+        # Целевые типы документации
+        target_types = {
+            'GLOBAL_FUNCTION': 0,
+            'GLOBAL_PROCEDURE': 0, 
+            'GLOBAL_EVENT': 0,
+            'OBJECT_FUNCTION': 0,
+            'OBJECT_PROCEDURE': 0,
+            'OBJECT_PROPERTY': 0,
+            'OBJECT_EVENT': 0,
+            'OBJECT_CONSTRUCTOR': 0,
+            'OBJECT': 0
+        }
+        
+        # Группируем файлы по каталогам и типам
+        global_methods_files = []
+        global_events_files = []
+        global_context_files = []
+        object_constructors_files = []
+        object_events_files = []
+        other_object_files = []
         
         for entry in entries:
             if entry.is_dir:
@@ -187,27 +143,199 @@ class HBKParser:
                 self._parse_categories_file(entry, result)
                 continue
             
-            # Анализируем .html файлы
+            # Собираем .html файлы по категориям
             if entry.path.endswith('.html'):
                 html_files += 1
-                # Пока просто считаем, парсинг будет в HTMLParser
+                
+                # Глобальные методы (функции/процедуры)
+                if ('objects/Global context/methods' in entry.path or 'objects\\Global context\\methods' in entry.path):
+                    global_methods_files.append(entry)
+                # Глобальные события
+                elif ('objects/Global context/events' in entry.path or 'objects\\Global context\\events' in entry.path):
+                    global_events_files.append(entry)
+                # Другие файлы Global context (свойства)
+                elif ('objects/Global context' in entry.path or 'objects\\Global context' in entry.path):
+                    global_context_files.append(entry)
+                # Конструкторы объектов
+                elif ('/ctors/' in entry.path or '\\ctors\\' in entry.path or 
+                      '/ctor/' in entry.path or '\\ctor\\' in entry.path):
+                    object_constructors_files.append(entry)
+                # События объектов (не Global context)
+                elif (('/events/' in entry.path or '\\events\\' in entry.path) and 
+                      'Global context' not in entry.path):
+                    object_events_files.append(entry)
+                # Файлы других объектов
+                elif 'objects/' in entry.path or 'objects\\' in entry.path:
+                    other_object_files.append(entry)
                 continue
             
             # Анализируем .st файлы (шаблоны)
             if entry.path.endswith('.st'):
                 st_files += 1
-                # Пока просто считаем
                 continue
+        
+        logger.info(f"Распределение HTML файлов: методы={len(global_methods_files)}, события={len(global_events_files)}, "
+                   f"Global context={len(global_context_files)}, конструкторы={len(object_constructors_files)}, "
+                   f"события объектов={len(object_events_files)}, другие объекты={len(other_object_files)}")
+        
+        def check_found_types():
+            """Проверяет, сколько документов каждого типа найдено."""
+            for doc in result.documentation:
+                doc_type = doc.type.name
+                if doc_type in target_types:
+                    target_types[doc_type] += 1
+        
+        def all_types_found():
+            """Проверяет, найдены ли минимальные количества всех типов."""
+            return all(count >= min_per_type for count in target_types.values())
+        
+        # Умная стратегия поиска: обрабатываем файлы пока не найдем все типы
+        categories_processed = {
+            'global_methods': 0,
+            'global_events': 0, 
+            'global_context': 0,
+            'object_constructors': 0,
+            'object_events': 0,
+            'other_objects': 0
+        }
+        
+        batch_size = 5  # Обрабатываем по 5 файлов из каждой категории за раз
+        
+        while not all_types_found() and processed_html < 100:  # Максимум 100 файлов всего
+            initial_count = processed_html
+            
+            # 1. Обрабатываем глобальные методы
+            for i in range(batch_size):
+                if (categories_processed['global_methods'] + i < len(global_methods_files) and
+                    (target_types['GLOBAL_FUNCTION'] < min_per_type or target_types['GLOBAL_PROCEDURE'] < min_per_type)):
+                    entry = global_methods_files[categories_processed['global_methods'] + i]
+                    self._create_document_from_html(entry, result)
+                    processed_html += 1
+            categories_processed['global_methods'] += batch_size
+            
+            # 2. Обрабатываем глобальные события
+            for i in range(batch_size):
+                if (categories_processed['global_events'] + i < len(global_events_files) and
+                    target_types['GLOBAL_EVENT'] < min_per_type):
+                    entry = global_events_files[categories_processed['global_events'] + i]
+                    logger.info(f"Обрабатываем файл события: {entry.path}")
+                    self._create_document_from_html(entry, result)
+                    processed_html += 1
+            categories_processed['global_events'] += batch_size
+            
+            # 3. Обрабатываем Global context (свойства)
+            for i in range(batch_size):
+                if (categories_processed['global_context'] + i < len(global_context_files) and
+                    target_types['OBJECT_PROPERTY'] < min_per_type):
+                    entry = global_context_files[categories_processed['global_context'] + i]
+                    self._create_document_from_html(entry, result)
+                    processed_html += 1
+            categories_processed['global_context'] += batch_size
+            
+            # 4. Обрабатываем конструкторы объектов (ищем OBJECT_CONSTRUCTOR)
+            for i in range(batch_size):
+                if (categories_processed['object_constructors'] + i < len(object_constructors_files) and
+                    target_types['OBJECT_CONSTRUCTOR'] < min_per_type):
+                    entry = object_constructors_files[categories_processed['object_constructors'] + i]
+                    logger.info(f"Обрабатываем файл конструктора: {entry.path}")
+                    self._create_document_from_html(entry, result)
+                    processed_html += 1
+            categories_processed['object_constructors'] += batch_size
+            
+            # 5. Обрабатываем события объектов (ищем OBJECT_EVENT)
+            for i in range(batch_size):
+                if (categories_processed['object_events'] + i < len(object_events_files) and
+                    target_types['OBJECT_EVENT'] < min_per_type):
+                    entry = object_events_files[categories_processed['object_events'] + i]
+                    logger.info(f"Обрабатываем файл события объекта: {entry.path}")
+                    self._create_document_from_html(entry, result)
+                    processed_html += 1
+            categories_processed['object_events'] += batch_size
+            
+            # 6. Обрабатываем другие объекты
+            for i in range(batch_size):
+                if (categories_processed['other_objects'] + i < len(other_object_files) and
+                    (target_types['OBJECT_FUNCTION'] < min_per_type or 
+                     target_types['OBJECT_PROCEDURE'] < min_per_type or
+                     target_types['OBJECT'] < min_per_type)):
+                    entry = other_object_files[categories_processed['other_objects'] + i]
+                    self._create_document_from_html(entry, result)
+                    processed_html += 1
+            categories_processed['other_objects'] += batch_size
+            
+            # Обновляем счетчики найденных типов
+            target_types = {key: 0 for key in target_types}  # Сбрасываем счетчики
+            check_found_types()
+            
+            # Если за этот проход ничего не обработали, прерываем
+            if processed_html == initial_count:
+                break
+        
+        logger.info(f"Найдено типов документации: {target_types}")
+        logger.info(f"Обработано по категориям: методы={categories_processed['global_methods']}, "
+                   f"события={categories_processed['global_events']}, Global context={categories_processed['global_context']}, "
+                   f"конструкторы={categories_processed['object_constructors']}, события объектов={categories_processed['object_events']}, "
+                   f"другие объекты={categories_processed['other_objects']}")
         
         # Обновляем статистику
         result.stats = {
             'html_files': html_files,
+            'global_methods_files': len(global_methods_files),
+            'global_events_files': len(global_events_files), 
+            'global_context_files': len(global_context_files),
+            'object_constructors_files': len(object_constructors_files),
+            'object_events_files': len(object_events_files),
+            'other_object_files': len(other_object_files),
+            'processed_html': processed_html,
+            'categories_processed': categories_processed,
+            'found_types': target_types,
             'st_files': st_files,
             'category_files': category_files,
             'total_entries': len(entries)
         }
         
-        logger.info(f"Структура архива: HTML={html_files}, ST={st_files}, Categories={category_files}")
+        logger.info(f"Структура архива: HTML={html_files}, обработано {processed_html} по умной стратегии, ST={st_files}, Categories={category_files}")
+    
+    def _create_document_from_html(self, entry: HBKEntry, result: ParsedHBK):
+        """Создает документ из HTML файла, используя HTMLParser для извлечения содержимого."""
+        from src.models.doc_models import Documentation, DocumentType
+        
+        try:
+            # Определяем имя документа из пути
+            path_parts = entry.path.replace('\\', '/').split('/')
+            doc_name = path_parts[-1].replace('.html', '')
+            
+            # Определяем категорию из пути
+            category = path_parts[-2] if len(path_parts) > 1 else "common"
+            
+            # Извлекаем содержимое HTML файла из архива
+            html_content = None
+            if entry.content:
+                # Если содержимое уже загружено
+                html_content = entry.content
+            else:
+                # Извлекаем содержимое по требованию
+                html_content = self.extract_file_content(entry.path)
+            
+            if not html_content:
+                logger.warning(f"Не удалось извлечь содержимое файла {entry.path}")
+                return
+            
+            # Парсим HTML используя HTMLParser
+            documentation = self.html_parser.parse_html_content(
+                content=html_content,
+                file_path=entry.path
+            )
+            
+            if documentation:
+                # Добавляем обработанную документацию напрямую
+                result.documentation.append(documentation)
+                logger.debug(f"Создан документ: {documentation.name} из файла {entry.path}")
+            else:
+                logger.warning(f"HTMLParser не смог обработать файл {entry.path}")
+            
+        except Exception as e:
+            logger.warning(f"Ошибка создания документа из {entry.path}: {e}")
     
     def _parse_categories_file(self, entry: HBKEntry, result: ParsedHBK):
         """Парсит файл __categories__ для извлечения метаинформации."""
@@ -256,33 +384,56 @@ class HBKParser:
             logger.warning(f"Ошибка парсинга файла категорий {entry.path}: {e}")
     
     def _extract_external_7z(self, file_path: Path) -> List[HBKEntry]:
-        """Извлекает список файлов из архива через внешний 7zip (без извлечения содержимого)."""
+        """Извлекает список файлов из архива через внешний 7zip."""
         entries = []
         
-        # Ищем доступный 7zip
-        zip_commands = ['7z', '7z.exe']
+        # Ищем доступный 7zip - сначала в PATH, затем в стандартных местах
+        zip_commands = [
+            '7z',           # В PATH
+            '7z.exe',       # В PATH  
+            '7za',          # В PATH (standalone версия)
+            '7za.exe',      # В PATH (standalone версия)
+            # Стандартные пути Windows
+            'C:\\Program Files\\7-Zip\\7z.exe',
+            'C:\\Program Files (x86)\\7-Zip\\7z.exe',
+            # Переносная версия
+            '7-Zip\\7z.exe',
+            '7zip\\7z.exe'
+        ]
         working_7z = None
+        
+        logger.info(f"Поиск 7zip для обработки файла: {file_path}")
         
         for cmd in zip_commands:
             try:
+                logger.debug(f"Проверяем команду: {cmd}")
                 result = safe_subprocess_run([cmd], timeout=5)
+                # 7zip возвращает код 0 при показе help или содержит информацию о версии
                 if result.returncode == 0 or 'Igor Pavlov' in result.stdout or '7-Zip' in result.stdout:
                     working_7z = cmd
+                    logger.info(f"Найден рабочий 7zip: {cmd}")
                     break
-            except SafeSubprocessError:
+            except SafeSubprocessError as e:
+                logger.debug(f"Команда {cmd} не найдена: {e}")
                 continue
         
         if not working_7z:
-            raise HBKParserError("7zip не найден в системе")
+            logger.error("7zip не найден в системе. Проверьте установку 7-Zip")
+            raise HBKParserError("7zip не найден в системе. Проверьте установку 7-Zip")
         
         # Получаем список файлов (без извлечения)
+        logger.info(f"Получаем список файлов из архива: {file_path}")
         try:
             result = safe_subprocess_run([working_7z, 'l', str(file_path)], timeout=60)
         except SafeSubprocessError as e:
+            logger.error(f"Ошибка выполнения команды 7zip: {e}")
             raise HBKParserError(f"Ошибка чтения архива: {e}")
         
         if result.returncode != 0:
+            logger.error(f"7zip вернул код ошибки {result.returncode}: {result.stderr}")
             raise HBKParserError(f"Ошибка чтения архива: {result.stderr}")
+        
+        logger.debug(f"Вывод 7zip: {result.stdout[:500]}...")  # Первые 500 символов для отладки
         
         # Парсим вывод 7zip
         lines = result.stdout.split('\n')

@@ -3,6 +3,7 @@
 import asyncio
 import sys
 import time
+import pytest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -13,6 +14,7 @@ from src.parsers.hbk_parser import HBKParser
 from src.parsers.indexer import indexer
 
 
+@pytest.mark.asyncio
 async def test_indexing():
     """Тест индексации документации."""
     print("=== Тест 3: Индексация в Elasticsearch ===")

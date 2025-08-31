@@ -110,9 +110,19 @@ class HTMLParser:
             return DocumentType.OBJECT_PROPERTY, object_name, file_name
             
         elif '/events/' in path_lower:
-            # Это событие объекта (глобальных событий в 1С нет)
+            # Это событие - может быть глобальным или объектным
             object_name = self._extract_object_name(path_str, 'events')
-            return DocumentType.OBJECT_EVENT, object_name, file_name
+            if object_name and object_name.lower() == 'global context':
+                return DocumentType.GLOBAL_EVENT, object_name, file_name
+            else:
+                return DocumentType.OBJECT_EVENT, object_name, file_name
+            
+        elif '/ctors/' in path_lower or '/ctor/' in path_lower:
+            # Это конструктор объекта
+            object_name = self._extract_object_name(path_str, 'ctors')
+            if not object_name:
+                object_name = self._extract_object_name(path_str, 'ctor')
+            return DocumentType.OBJECT_CONSTRUCTOR, object_name, file_name
             
         elif 'globalfunctions/' in path_lower or '/functions/' in path_lower:
             # Глобальная функция

@@ -11,6 +11,9 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
+# Включаем режим asyncio для pytest
+pytest_asyncio_mode = "auto"
+
 
 @pytest.fixture(scope="session")
 def event_loop():

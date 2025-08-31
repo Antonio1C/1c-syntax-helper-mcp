@@ -1,6 +1,6 @@
 """Конфигурация приложения."""
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from pydantic_settings import BaseSettings
 from typing import Optional
 import os
@@ -32,9 +32,12 @@ class Settings(BaseSettings):
     """Основные настройки приложения."""
     
     # Elasticsearch настройки
+    elasticsearch_host: str = "192.168.0.12"
+    elasticsearch_port: str = "9200"
     elasticsearch_url: str = "http://localhost:9200"
     elasticsearch_index: str = "1c_docs_index"
     elasticsearch_timeout: int = 30
+    elasticsearch_max_retries: str = "3"
     
     # Сервер настройки
     server_host: str = "0.0.0.0"
@@ -45,21 +48,33 @@ class Settings(BaseSettings):
     hbk_directory: str = "data/hbk"
     logs_directory: str = "data/logs"
     
+    # Производительность
+    max_concurrent_requests: str = "8"
+    index_batch_size: str = "100"
+    reindex_on_startup: str = "true"
+    search_max_results: str = "50"
+    search_timeout_seconds: str = "30"
+    
     # Режим разработки
     debug: bool = False
     
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
+    model_config = ConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        case_sensitive=False
+    )
     
     @property
     def elasticsearch(self) -> ElasticsearchConfig:
         """Получить конфигурацию Elasticsearch."""
+        # Формируем URL из host и port
+        es_url = f"http://{self.elasticsearch_host}:{self.elasticsearch_port}"
+        
         return ElasticsearchConfig(
-            url=self.elasticsearch_url,
+            url=es_url,
             index_name=self.elasticsearch_index,
-            timeout=self.elasticsearch_timeout
+            timeout=self.elasticsearch_timeout,
+            max_retries=int(self.elasticsearch_max_retries)
         )
     
     @property

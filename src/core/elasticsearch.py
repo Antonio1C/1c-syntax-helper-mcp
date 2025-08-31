@@ -47,8 +47,7 @@ class ElasticsearchClient:
                 hosts=[self._config.url],
                 request_timeout=self._request_timeout,
                 max_retries=self._config.max_retries,
-                retry_on_timeout=True,
-                timeout=self._connection_timeout
+                retry_on_timeout=True
             )
             
             # Проверяем подключение

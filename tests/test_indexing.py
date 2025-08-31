@@ -2,6 +2,7 @@
 
 import asyncio
 import sys
+import pytest
 from pathlib import Path
 
 # Добавляем путь к проекту
@@ -14,6 +15,7 @@ from src.core.logging import get_logger
 logger = get_logger(__name__)
 
 
+@pytest.mark.asyncio
 async def test_elasticsearch_connection():
     """Тест 1: Проверка подключения к Elasticsearch."""
     print("=== Тест 1: Подключение к Elasticsearch ===")

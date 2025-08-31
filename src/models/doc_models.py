@@ -9,10 +9,12 @@ class DocumentType(str, Enum):
     """Типы документации 1С."""
     GLOBAL_FUNCTION = "global_function"
     GLOBAL_PROCEDURE = "global_procedure"
+    GLOBAL_EVENT = "global_event"
     OBJECT_FUNCTION = "object_function"
     OBJECT_PROCEDURE = "object_procedure"
     OBJECT_PROPERTY = "object_property"
     OBJECT_EVENT = "object_event"
+    OBJECT_CONSTRUCTOR = "object_constructor"
     OBJECT = "object"
 
 

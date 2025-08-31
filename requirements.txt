@@ -13,9 +13,6 @@ pydantic-settings==2.6.1
 beautifulsoup4==4.12.2
 lxml==4.9.3
 
-# Работа с архивами (.hbk файлы)
-py7zr==0.20.8
-
 # HTTP клиент для внешних запросов
 httpx==0.25.2
 
