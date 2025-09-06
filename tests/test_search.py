@@ -6,8 +6,9 @@ import time
 import pytest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
+from src.core.elasticsearch import es_client
 from src.search.search_service import search_service
 
 
@@ -16,9 +17,15 @@ async def test_search():
     """Тест системы поиска."""
     print("=== Тест 4: Система поиска ===")
     
-    test_queries = ["СтрДлина", "ТаблицаЗначений", "Добавить"]
-    
     try:
+        # Подключаемся к Elasticsearch
+        connected = await es_client.connect()
+        if not connected:
+            print("❌ Elasticsearch недоступен")
+            return False
+    
+        test_queries = ["СтрДлина", "ТаблицаЗначений", "Добавить"]
+    
         for query in test_queries:
             print(f"\n🔍 Поиск: '{query}'")
             
@@ -54,6 +61,8 @@ async def test_search():
     except Exception as e:
         print(f"❌ Ошибка тестирования поиска: {e}")
         return False
+    finally:
+        await es_client.disconnect()
 
 
 if __name__ == "__main__":

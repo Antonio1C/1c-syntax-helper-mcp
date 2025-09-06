@@ -86,6 +86,7 @@ def setup_logging() -> None:
     
     # Настраиваем уровни для внешних библиотек
     logging.getLogger("elasticsearch").setLevel(logging.WARNING)
+    logging.getLogger("elastic_transport").setLevel(logging.WARNING)
     logging.getLogger("urllib3").setLevel(logging.WARNING)
     logging.getLogger("uvicorn.access").setLevel(logging.INFO)
 

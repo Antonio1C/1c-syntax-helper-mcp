@@ -96,11 +96,11 @@ class QueryBuilder:
             "query": {
                 "bool": {
                     "should": [
-                        {"term": {"name.keyword": {"value": query, "boost": 5.0}}},
-                        {"term": {"full_path.keyword": {"value": query, "boost": 4.0}}},
-                        {"match_phrase": {"name": {"query": query, "boost": 3.0}}},
-                        {"match_phrase": {"syntax_ru": {"query": query, "boost": 2.0}}},
-                        {"match_phrase": {"syntax_en": {"query": query, "boost": 2.0}}}
+                        {"match_phrase": {"name": {"query": query, "boost": 5.0}}},
+                        {"match_phrase": {"full_path": {"query": query, "boost": 4.0}}},
+                        {"match_phrase": {"syntax_ru": {"query": query, "boost": 3.0}}},
+                        {"match_phrase": {"syntax_en": {"query": query, "boost": 3.0}}},
+                        {"match": {"description": {"query": query, "boost": 2.0}}}
                     ]
                 }
             },
@@ -132,8 +132,8 @@ class QueryBuilder:
                         }
                     },
                     "should": [
-                        {"term": {"name.keyword": {"value": query, "boost": 2.0}}},
-                        {"prefix": {"name.keyword": {"value": query, "boost": 1.5}}}
+                        {"match_phrase": {"name": {"query": query, "boost": 2.0}}},
+                        {"prefix": {"name": {"value": query, "boost": 1.5}}}
                     ]
                 }
             },

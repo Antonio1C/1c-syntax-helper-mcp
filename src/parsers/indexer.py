@@ -34,19 +34,18 @@ class ElasticsearchIndexer:
             total_docs = len(parsed_hbk.documentation)
             indexed_count = 0
             
-            logger.info(f"Начинаем индексацию {total_docs} документов")
-            
             for i in range(0, total_docs, self.batch_size):
                 batch = parsed_hbk.documentation[i:i + self.batch_size]
                 
                 success = await self._index_batch(batch)
                 if success:
                     indexed_count += len(batch)
-                    logger.info(f"Проиндексировано {indexed_count}/{total_docs} документов")
                 else:
                     logger.error(f"Ошибка индексации батча {i}-{i+len(batch)}")
             
-            logger.info(f"Индексация завершена. Проиндексировано: {indexed_count}/{total_docs}")
+            # Принудительно обновляем индекс для немедленного отражения изменений
+            await es_client.refresh_index()
+            
             return indexed_count == total_docs
             
         except Exception as e:
@@ -124,17 +123,13 @@ class ElasticsearchIndexer:
     
     async def reindex_all(self, parsed_hbk: ParsedHBK) -> bool:
         """Переиндексирует всю документацию (удаляет старый индекс и создает новый)."""
-        try:
-            logger.info("Начинаем переиндексацию")
-            
+        try:            
             # Удаляем старый индекс если существует
             if await es_client.index_exists():
-                logger.info("Удаляем старый индекс")
                 if es_client._client:
                     await es_client._client.indices.delete(index=es_client._config.index_name)
             
             # Создаем новый индекс
-            logger.info("Создаем новый индекс")
             await es_client.create_index()
             
             # Индексируем документы

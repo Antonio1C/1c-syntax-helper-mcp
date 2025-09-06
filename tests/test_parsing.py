@@ -5,7 +5,7 @@ import sys
 import pytest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.core.config import settings
 from src.parsers.hbk_parser import HBKParser
@@ -61,8 +61,8 @@ async def test_hbk_parsing():
         print(f"📁 Найден файл: {hbk_file}")
         print(f"📊 Размер: {hbk_file.stat().st_size / 1024 / 1024:.1f} МБ")
         
-        # Парсим файл
-        parser = HBKParser()
+        # Парсим файл с ограничениями для быстрого тестирования
+        parser = HBKParser(max_files_per_type=3, max_total_files=50)
         parsed_hbk = parser.parse_file(str(hbk_file))
         
         if not parsed_hbk:

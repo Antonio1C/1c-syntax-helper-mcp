@@ -6,7 +6,7 @@ import time
 import pytest
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.core.config import settings
 from src.core.elasticsearch import es_client
@@ -34,7 +34,7 @@ async def test_indexing():
             print("❌ .hbk файл не найден")
             return False
         
-        parser = HBKParser()
+        parser = HBKParser(max_files_per_type=3, max_total_files=50)
         parsed_hbk = parser.parse_file(str(hbk_files[0]))
         
         if not parsed_hbk or not parsed_hbk.documentation:

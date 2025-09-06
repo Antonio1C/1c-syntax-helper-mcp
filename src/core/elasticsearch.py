@@ -52,7 +52,6 @@ class ElasticsearchClient:
             
             # Проверяем подключение
             await self._client.info()
-            logger.info("Успешно подключились к Elasticsearch")
             return True
             
         except ConnectionError as e:
@@ -67,7 +66,6 @@ class ElasticsearchClient:
         if self._client:
             try:
                 await self._client.close()
-                logger.info("Отключились от Elasticsearch")
             except Exception as e:
                 logger.warning(f"Ошибка при отключении от Elasticsearch: {e}")
             finally:
@@ -149,7 +147,6 @@ class ElasticsearchClient:
         
         try:
             await self._client.indices.create(index=self._config.index_name, body=index_config)
-            logger.info(f"Создан индекс {self._config.index_name}")
             return True
         except Exception as e:
             logger.error(f"Ошибка создания индекса: {e}")
@@ -166,6 +163,18 @@ class ElasticsearchClient:
         except Exception as e:
             logger.error(f"Ошибка получения количества документов: {e}")
             return None
+    
+    async def refresh_index(self) -> bool:
+        """Принудительно обновляет индекс для немедленного отражения изменений."""
+        if not self._client:
+            return False
+        
+        try:
+            await self._client.indices.refresh(index=self._config.index_name)
+            return True
+        except Exception as e:
+            logger.error(f"Ошибка обновления индекса: {e}")
+            return False
     
     async def search(self, query: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Выполняет поиск в индексе."""

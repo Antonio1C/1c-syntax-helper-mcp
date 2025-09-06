@@ -86,10 +86,7 @@ dmypy.json
 Thumbs.db
 
 # Project specific
-data/logs/*.log
-data/hbk/*.hbk
-!data/hbk/.gitkeep
-!data/logs/.gitkeep
+data/
 
 # Exclude .hbk files from root directory
 *.hbk

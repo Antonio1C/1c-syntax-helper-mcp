@@ -30,12 +30,16 @@ class HBKParserError(Exception):
 class HBKParser:
     """Парсер .hbk архивов с документацией 1С."""
     
-    def __init__(self):
+    def __init__(self, max_files_per_type: Optional[int] = None, max_total_files: Optional[int] = None):
         self.supported_extensions = ['.hbk', '.zip', '.7z']
         self._zip_command = None
         self._archive_path = None
         self._max_file_size = MAX_FILE_SIZE_MB * 1024 * 1024  # MB в байты
         self.html_parser = HTMLParser()  # Инициализируем HTML парсер
+        
+        # Параметры ограничений для тестирования
+        self.max_files_per_type = max_files_per_type  # None = без ограничений
+        self.max_total_files = max_total_files        # None = парсить все файлы
     
     def parse_file(self, file_path: str) -> Optional[ParsedHBK]:
         """Парсит .hbk файл и извлекает содержимое."""
@@ -52,8 +56,6 @@ class HBKParser:
         if file_path.stat().st_size > self._max_file_size:
             logger.error(f"Файл слишком большой: {file_path.stat().st_size / 1024 / 1024:.1f}MB")
             return None
-        
-        logger.info(f"Начинаем парсинг файла: {file_path}")
         
         # Создаем объект результата
         result = ParsedHBK(
@@ -72,12 +74,10 @@ class HBKParser:
                 return result
             
             result.file_info.entries_count = len(entries)
-            logger.info(f"Извлечено {len(entries)} записей из архива")
             
             # Анализируем структуру и извлекаем документацию
             self._analyze_structure(entries, result)
             
-            logger.info(f"Парсинг завершен. Найдено документов: {len(result.documentation)}")
             return result
             
         except Exception as e:
@@ -90,7 +90,6 @@ class HBKParser:
         try:
             entries = self._extract_external_7z(file_path)
             if entries:
-                logger.info("Файл успешно обработан через внешний 7zip")
                 return entries
             else:
                 logger.error(f"Не удалось извлечь файлы из архива: {file_path}")
@@ -107,8 +106,10 @@ class HBKParser:
         st_files = 0
         category_files = 0
         processed_html = 0  # Счетчик обработанных HTML файлов
-        min_per_type = 3  # Минимум документов каждого типа
-        max_files_per_batch = 10  # Максимум файлов за один проход
+        
+        # Параметры ограничений (если заданы, иначе обрабатываем все)
+        min_per_type = self.max_files_per_type or float('inf')  # Без ограничений если None
+        max_total = self.max_total_files or float('inf')        # Без ограничений если None
         
         # Целевые типы документации
         target_types = {
@@ -174,10 +175,6 @@ class HBKParser:
                 st_files += 1
                 continue
         
-        logger.info(f"Распределение HTML файлов: методы={len(global_methods_files)}, события={len(global_events_files)}, "
-                   f"Global context={len(global_context_files)}, конструкторы={len(object_constructors_files)}, "
-                   f"события объектов={len(object_events_files)}, другие объекты={len(other_object_files)}")
-        
         def check_found_types():
             """Проверяет, сколько документов каждого типа найдено."""
             for doc in result.documentation:
@@ -186,10 +183,17 @@ class HBKParser:
                     target_types[doc_type] += 1
         
         def all_types_found():
-            """Проверяет, найдены ли минимальные количества всех типов."""
-            return all(count >= min_per_type for count in target_types.values())
+            """Проверяет, найдены ли минимальные количества всех типов или достигнут лимит файлов."""
+            if self.max_files_per_type is None and self.max_total_files is None:
+                return False  # Без ограничений - обрабатываем все файлы
+            
+            # Если заданы ограничения - проверяем их
+            types_satisfied = all(count >= min_per_type for count in target_types.values()) if self.max_files_per_type else True
+            total_satisfied = processed_html >= max_total if self.max_total_files else True
+            
+            return types_satisfied or total_satisfied
         
-        # Умная стратегия поиска: обрабатываем файлы пока не найдем все типы
+        # Стратегия обработки: с ограничениями или полная
         categories_processed = {
             'global_methods': 0,
             'global_events': 0, 
@@ -199,9 +203,14 @@ class HBKParser:
             'other_objects': 0
         }
         
-        batch_size = 5  # Обрабатываем по 5 файлов из каждой категории за раз
+        # Размер батча зависит от наличия ограничений
+        batch_size = 5 if (self.max_files_per_type or self.max_total_files) else len(max(
+            [global_methods_files, global_events_files, global_context_files, 
+             object_constructors_files, object_events_files, other_object_files], 
+            key=len
+        ))
         
-        while not all_types_found() and processed_html < 100:  # Максимум 100 файлов всего
+        while not all_types_found() and processed_html < max_total:
             initial_count = processed_html
             
             # 1. Обрабатываем глобальные методы
@@ -218,7 +227,6 @@ class HBKParser:
                 if (categories_processed['global_events'] + i < len(global_events_files) and
                     target_types['GLOBAL_EVENT'] < min_per_type):
                     entry = global_events_files[categories_processed['global_events'] + i]
-                    logger.info(f"Обрабатываем файл события: {entry.path}")
                     self._create_document_from_html(entry, result)
                     processed_html += 1
             categories_processed['global_events'] += batch_size
@@ -237,7 +245,6 @@ class HBKParser:
                 if (categories_processed['object_constructors'] + i < len(object_constructors_files) and
                     target_types['OBJECT_CONSTRUCTOR'] < min_per_type):
                     entry = object_constructors_files[categories_processed['object_constructors'] + i]
-                    logger.info(f"Обрабатываем файл конструктора: {entry.path}")
                     self._create_document_from_html(entry, result)
                     processed_html += 1
             categories_processed['object_constructors'] += batch_size
@@ -247,7 +254,6 @@ class HBKParser:
                 if (categories_processed['object_events'] + i < len(object_events_files) and
                     target_types['OBJECT_EVENT'] < min_per_type):
                     entry = object_events_files[categories_processed['object_events'] + i]
-                    logger.info(f"Обрабатываем файл события объекта: {entry.path}")
                     self._create_document_from_html(entry, result)
                     processed_html += 1
             categories_processed['object_events'] += batch_size
@@ -271,12 +277,6 @@ class HBKParser:
             if processed_html == initial_count:
                 break
         
-        logger.info(f"Найдено типов документации: {target_types}")
-        logger.info(f"Обработано по категориям: методы={categories_processed['global_methods']}, "
-                   f"события={categories_processed['global_events']}, Global context={categories_processed['global_context']}, "
-                   f"конструкторы={categories_processed['object_constructors']}, события объектов={categories_processed['object_events']}, "
-                   f"другие объекты={categories_processed['other_objects']}")
-        
         # Обновляем статистику
         result.stats = {
             'html_files': html_files,
@@ -293,8 +293,6 @@ class HBKParser:
             'category_files': category_files,
             'total_entries': len(entries)
         }
-        
-        logger.info(f"Структура архива: HTML={html_files}, обработано {processed_html} по умной стратегии, ST={st_files}, Categories={category_files}")
     
     def _create_document_from_html(self, entry: HBKEntry, result: ParsedHBK):
         """Создает документ из HTML файла, используя HTMLParser для извлечения содержимого."""
@@ -402,8 +400,6 @@ class HBKParser:
         ]
         working_7z = None
         
-        logger.info(f"Поиск 7zip для обработки файла: {file_path}")
-        
         for cmd in zip_commands:
             try:
                 logger.debug(f"Проверяем команду: {cmd}")
@@ -411,7 +407,6 @@ class HBKParser:
                 # 7zip возвращает код 0 при показе help или содержит информацию о версии
                 if result.returncode == 0 or 'Igor Pavlov' in result.stdout or '7-Zip' in result.stdout:
                     working_7z = cmd
-                    logger.info(f"Найден рабочий 7zip: {cmd}")
                     break
             except SafeSubprocessError as e:
                 logger.debug(f"Команда {cmd} не найдена: {e}")
@@ -422,7 +417,6 @@ class HBKParser:
             raise HBKParserError("7zip не найден в системе. Проверьте установку 7-Zip")
         
         # Получаем список файлов (без извлечения)
-        logger.info(f"Получаем список файлов из архива: {file_path}")
         try:
             result = safe_subprocess_run([working_7z, 'l', str(file_path)], timeout=60)
         except SafeSubprocessError as e:
@@ -527,3 +521,82 @@ class HBKParser:
                     supported_files.append(file_path)
         
         return supported_files
+
+    def parse_single_file_from_archive(self, archive_path: str, target_file_path: str) -> Optional[ParsedHBK]:
+        """
+        Извлекает и парсит один конкретный файл из архива.
+        
+        Args:
+            archive_path: Путь к архиву .hbk
+            target_file_path: Путь к файлу внутри архива (например: "Global context/methods/catalog4838/StrLen912.html")
+        
+        Returns:
+            ParsedHBK объект с одним файлом или None при ошибке
+        """
+        archive_path = Path(archive_path)
+        
+        try:
+            # Валидация входного файла
+            validate_file_path(archive_path, self.supported_extensions)
+        except SafeSubprocessError as e:
+            logger.error(f"Валидация архива не прошла: {e}")
+            return None
+        
+        # Создаем объект результата
+        result = ParsedHBK(
+            file_info=HBKFile(
+                path=str(archive_path),
+                size=archive_path.stat().st_size,
+                modified=archive_path.stat().st_mtime
+            )
+        )
+        
+        try:
+            # Определяем команду для 7zip
+            zip_cmd = self._get_7zip_command()
+            if not zip_cmd:
+                result.errors.append("7zip не найден")
+                return result
+            
+            # Сохраняем параметры для использования в extract_file_content
+            self._zip_command = zip_cmd
+            self._archive_path = archive_path
+            
+            logger.info(f"Извлекаение одного файла: {target_file_path}")
+            
+            # Извлекаем содержимое конкретного файла
+            content = self.extract_file_content(target_file_path)
+            if not content:
+                result.errors.append(f"Не удалось извлечь файл: {target_file_path}")
+                return result
+            
+            logger.info(f"Файл извлечен: {len(content)} байт")
+            
+            # Парсим HTML содержимое если это HTML файл
+            if target_file_path.lower().endswith('.html'):
+                try:
+                    # Декодируем содержимое
+                    html_content = content.decode('utf-8', errors='ignore')
+                    
+                    # Парсим через HTML парсер
+                    parsed_doc = self.html_parser.parse_html_content(html_content, target_file_path)
+                    
+                    if parsed_doc:
+                        result.documents.append(parsed_doc)
+                        result.file_info.entries_count = 1
+                        logger.info(f"Документ успешно распарсен: {parsed_doc.name}")
+                    else:
+                        result.errors.append(f"Не удалось распарсить HTML: {target_file_path}")
+                        
+                except Exception as e:
+                    logger.error(f"Ошибка парсинга HTML {target_file_path}: {e}")
+                    result.errors.append(f"Ошибка парсинга HTML: {str(e)}")
+            else:
+                result.errors.append(f"Файл не является HTML: {target_file_path}")
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"Ошибка извлечения файла {target_file_path} из {archive_path}: {e}")
+            result.errors.append(f"Ошибка извлечения: {str(e)}")
+            return result
