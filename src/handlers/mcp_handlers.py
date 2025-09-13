@@ -1,271 +1,209 @@
 """Обработчики MCP запросов."""
 
 from src.models.mcp_models import (
-    MCPResponse, SearchRequest, FunctionDetailsRequest, ObjectInfoRequest
+    MCPResponse, Find1CHelpRequest, GetSyntaxInfoRequest, GetQuickReferenceRequest,
+    SearchByContextRequest, ListObjectMembersRequest
 )
 from src.search.search_service import search_service
+from src.handlers.mcp_formatter import mcp_formatter
 from src.core.logging import get_logger
 
 logger = get_logger(__name__)
 
 
-async def handle_search(request: SearchRequest) -> MCPResponse:
-    """Обработка поиска по синтаксису."""
-    logger.info(f"Поиск: {request.query}")
+def _log_mcp_request(tool_name: str, **context):
+    """Логирует MCP запрос с контекстом."""
+    logger.debug(f"MCP запрос: {tool_name}", extra={"extra_data": {"tool": tool_name, **context}})
+
+
+def _log_mcp_success(tool_name: str, count: int = None, **context):
+    """Логирует успешный MCP ответ."""
+    extra = {"tool": tool_name, "status": "success", **context}
+    if count is not None:
+        extra["results_count"] = count
+    logger.debug(f"MCP успех: {tool_name}", extra={"extra_data": extra})
+
+
+def _log_mcp_error(tool_name: str, error: str, **context):
+    """Логирует ошибку MCP запроса."""
+    logger.error(f"MCP ошибка: {tool_name} - {error}", 
+                extra={"extra_data": {"tool": tool_name, "status": "error", "error": error, **context}})
+
+
+async def handle_find_1c_help(request: Find1CHelpRequest) -> MCPResponse:
+    """Универсальный поиск справки по любому элементу 1С."""
+    _log_mcp_request("find_1c_help", query=request.query, limit=request.limit)
     
     try:
-        # Выполняем поиск через сервис
-        search_results = await search_service.search_1c_syntax(
-            query=request.query,
-            limit=getattr(request, 'limit', 10),
-            search_type="auto"
-        )
+        results = await search_service.find_help_by_query(request.query, request.limit)
         
-        # Проверяем наличие ошибок
-        if search_results.get("error"):
-            return MCPResponse(
-                content=[],
-                error=f"Ошибка поиска: {search_results['error']}"
-            )
+        if results.get("error"):
+            _log_mcp_error("find_1c_help", results["error"])
+            return mcp_formatter.create_error_response("Ошибка поиска", results["error"])
         
-        # Форматируем результаты для MCP
-        results = search_results.get("results", [])
+        search_results = results.get("results", [])
         
-        if not results:
-            return MCPResponse(
-                content=[{
-                    "type": "text",
-                    "text": f"По запросу '{request.query}' ничего не найдено."
-                }]
-            )
+        if not search_results:
+            _log_mcp_success("find_1c_help", count=0)
+            return mcp_formatter.create_not_found_response(request.query)
         
-        # Формируем ответ с результатами
-        content = []
+        content = [mcp_formatter.format_search_header(len(search_results), request.query)]
         
-        # Добавляем заголовок с информацией о поиске
-        content.append({
-            "type": "text",
-            "text": f"**Результаты поиска по запросу:** `{request.query}`\n"
-                   f"**Найдено:** {len(results)} из {search_results.get('total', 0)}\n"
-                   f"**Время поиска:** {search_results.get('search_time_ms', 0)}ms\n"
-        })
+        # Результаты
+        for i, result in enumerate(search_results, 1):
+            content.append(mcp_formatter.format_search_result(result, i))
         
-        # Добавляем результаты
-        for i, result in enumerate(results[:10], 1):  # Ограничиваем 10 результатами
-            content.append({
-                "type": "text", 
-                "text": _format_search_result(result, i)
-            })
-        
-        return MCPResponse(content=content)
+        _log_mcp_success("find_1c_help", count=len(search_results))
+        return mcp_formatter.create_success_response(content)
         
     except Exception as e:
-        logger.error(f"Ошибка обработки поиска: {e}")
-        return MCPResponse(
-            content=[],
-            error=f"Внутренняя ошибка поиска: {str(e)}"
-        )
+        _log_mcp_error("find_1c_help", str(e))
+        return mcp_formatter.create_error_response("Внутренняя ошибка поиска", str(e))
 
 
-async def handle_function_details(request: FunctionDetailsRequest) -> MCPResponse:
-    """Обработка запроса деталей функции."""
-    logger.info(f"Детали функции: {request.function_name}")
+async def handle_get_syntax_info(request: GetSyntaxInfoRequest) -> MCPResponse:
+    """Получить полную техническую информацию об элементе."""
+    _log_mcp_request("get_syntax_info", element_name=request.element_name, 
+                    object_name=request.object_name, include_examples=request.include_examples)
     
     try:
-        # Получаем детали функции
-        function_details = await search_service.get_function_details(request.function_name)
+        result = await search_service.get_detailed_syntax_info(
+            request.element_name, 
+            request.object_name, 
+            request.include_examples
+        )
         
-        if not function_details:
-            return MCPResponse(
-                content=[{
-                    "type": "text",
-                    "text": f"Функция '{request.function_name}' не найдена."
-                }]
-            )
+        if not result:
+            element_context = f" объекта '{request.object_name}'" if request.object_name else ""
+            _log_mcp_success("get_syntax_info", count=0)
+            return mcp_formatter.create_not_found_response(f"Элемент '{request.element_name}'{element_context}")
         
-        # Форматируем детали для MCP
-        content = [{
+        # Форматируем детальную информацию
+        text = mcp_formatter.format_syntax_info(result)
+        
+        # Добавляем примеры если нужно
+        if request.include_examples and result.get('examples'):
+            examples = result['examples']
+            if isinstance(examples, list) and examples:
+                text += "💡 **Примеры:**\n"
+                for example in examples[:2]:  # Максимум 2 примера
+                    text += f"   ```\n   {example}\n   ```\n"
+        
+        _log_mcp_success("get_syntax_info", count=1, has_examples=bool(result.get('examples')))
+        return mcp_formatter.create_success_response([{
             "type": "text",
-            "text": _format_function_details(function_details)
-        }]
-        
-        return MCPResponse(content=content)
+            "text": text
+        }])
         
     except Exception as e:
-        logger.error(f"Ошибка получения деталей функции: {e}")
-        return MCPResponse(
-            content=[],
-            error=f"Ошибка получения деталей функции: {str(e)}"
-        )
+        _log_mcp_error("get_syntax_info", str(e))
+        return mcp_formatter.create_error_response("Ошибка получения информации", str(e))
 
 
-async def handle_object_info(request: ObjectInfoRequest) -> MCPResponse:
-    """Обработка запроса информации об объекте."""
-    logger.info(f"Информация об объекте: {request.object_name}")
+async def handle_get_quick_reference(request: GetQuickReferenceRequest) -> MCPResponse:
+    """Получить краткую справку."""
+    _log_mcp_request("get_quick_reference", element_name=request.element_name, object_name=request.object_name)
     
     try:
-        # Получаем информацию об объекте
-        object_info = await search_service.get_object_info(request.object_name)
+        result = await search_service.get_detailed_syntax_info(
+            request.element_name, 
+            request.object_name, 
+            include_examples=False
+        )
         
-        if object_info.get("error"):
-            return MCPResponse(
-                content=[],
-                error=f"Ошибка получения информации об объекте: {object_info['error']}"
-            )
+        if not result:
+            _log_mcp_success("get_quick_reference", count=0)
+            return mcp_formatter.create_not_found_response(f"⚡ Элемент '{request.element_name}'")
         
-        # Форматируем информацию для MCP
-        content = [{
+        text = mcp_formatter.format_quick_reference(result)
+        
+        _log_mcp_success("get_quick_reference", count=1)
+        return mcp_formatter.create_success_response([{
             "type": "text",
-            "text": _format_object_info(object_info)
-        }]
-        
-        return MCPResponse(content=content)
+            "text": text
+        }])
         
     except Exception as e:
-        logger.error(f"Ошибка получения информации об объекте: {e}")
-        return MCPResponse(
-            content=[],
-            error=f"Ошибка получения информации об объекте: {str(e)}"
+        _log_mcp_error("get_quick_reference", str(e))
+        return mcp_formatter.create_error_response("Ошибка получения справки", str(e))
+
+
+async def handle_search_by_context(request: SearchByContextRequest) -> MCPResponse:
+    """Поиск с фильтром по контексту."""
+    _log_mcp_request("search_by_context", query=request.query, context=request.context, 
+                    object_name=request.object_name, limit=request.limit)
+    
+    try:
+        results = await search_service.search_with_context_filter(
+            request.query,
+            request.context, 
+            request.object_name,
+            request.limit
+        )
+        
+        if results.get("error"):
+            _log_mcp_error("search_by_context", results["error"])
+            return mcp_formatter.create_error_response("Ошибка поиска", results["error"])
+        
+        search_results = results.get("results", [])
+        
+        if not search_results:
+            context_name = {"global": "глобальном", "object": "объектном", "all": "любом"}
+            context_text = context_name.get(request.context, request.context)
+            _log_mcp_success("search_by_context", count=0, context=request.context)
+            return mcp_formatter.create_not_found_response(request.query, f"{context_text} контексте")
+        
+        text = mcp_formatter.format_context_search(search_results, request.query, request.context)
+        
+        _log_mcp_success("search_by_context", count=len(search_results), context=request.context)
+        return mcp_formatter.create_success_response([{
+            "type": "text",
+            "text": text
+        }])
+        
+    except Exception as e:
+        _log_mcp_error("search_by_context", str(e))
+        return mcp_formatter.create_error_response("Ошибка поиска", str(e))
+
+
+async def handle_list_object_members(request: ListObjectMembersRequest) -> MCPResponse:
+    """Получить список элементов объекта."""
+    _log_mcp_request("list_object_members", object_name=request.object_name, member_type=request.member_type, limit=request.limit)
+    try:
+        result = await search_service.get_object_members_list(
+            request.object_name,
+            request.member_type,
+            request.limit
         )
 
+        if result.get("error"):
+            _log_mcp_error("list_object_members", result["error"])
+            return mcp_formatter.create_error_response("Ошибка", result["error"])
 
-def _format_search_result(result: dict, index: int) -> str:
-    """Форматирует результат поиска для вывода."""
-    name = result.get("name", "")
-    obj = result.get("object", "")
-    full_path = result.get("full_path", "")
-    description = result.get("description", "")
-    doc_type = result.get("type", "")
-    syntax_ru = result.get("syntax", {}).get("russian", "")
-    
-    # Формируем заголовок
-    title = f"{index}. **{name}**"
-    if obj:
-        title += f" _(объект: {obj})_"
-    
-    # Добавляем тип документа
-    type_emoji = {
-        "global_function": "🔧",
-        "function": "⚙️", 
-        "method": "🔨",
-        "property": "📋",
-        "event": "⚡",
-    }
-    emoji = type_emoji.get(doc_type, "📄")
-    
-    result_text = f"\n---\n{emoji} {title}\n"
-    
-    # Добавляем синтаксис
-    if syntax_ru:
-        result_text += f"**Синтаксис:** `{syntax_ru}`\n"
-    
-    # Добавляем описание
-    if description:
-        # Ограничиваем длину описания
-        desc = description[:200] + "..." if len(description) > 200 else description
-        result_text += f"**Описание:** {desc}\n"
-    
-    # Добавляем полный путь если отличается от имени
-    if full_path and full_path != name:
-        result_text += f"**Полный путь:** `{full_path}`\n"
-    
-    return result_text
+        methods = result.get("methods", [])
+        properties = result.get("properties", [])
+        events = result.get("events", [])
+        total = result.get("total", 0)
 
+        if total == 0:
+            _log_mcp_success("list_object_members", count=0)
+            return mcp_formatter.create_not_found_response(f"Объект '{request.object_name}' не найден или не содержит элементов")
 
-def _format_function_details(details: dict) -> str:
-    """Форматирует подробную информацию о функции."""
-    name = details.get("name", "")
-    description = details.get("description", "")
-    
-    result_text = f"# 🔧 Функция: {name}\n\n"
-    
-    # Описание
-    if description:
-        result_text += f"**Описание:** {description}\n\n"
-    
-    # Синтаксис
-    function_details = details.get("details", {})
-    syntax = function_details.get("full_syntax", {})
-    
-    if syntax.get("russian"):
-        result_text += f"**Синтаксис (рус):** `{syntax['russian']}`\n\n"
-    
-    if syntax.get("english"):
-        result_text += f"**Синтаксис (англ):** `{syntax['english']}`\n\n"
-    
-    # Параметры
-    parameters = function_details.get("parameters_detailed", [])
-    if parameters:
-        result_text += "## Параметры:\n\n"
-        for param in parameters:
-            required = " *(обязательный)*" if param.get("required") else " *(необязательный)*"
-            result_text += f"- **{param.get('name', '')}** ({param.get('type', '')}){required}\n"
-            if param.get("description"):
-                result_text += f"  {param['description']}\n"
-        result_text += "\n"
-    
-    # Возвращаемое значение
-    return_value = function_details.get("return_value", {})
-    if return_value.get("type"):
-        result_text += f"**Возвращает:** {return_value['type']}\n"
-        if return_value.get("description"):
-            result_text += f"{return_value['description']}\n"
-        result_text += "\n"
-    
-    # Примеры
-    examples = function_details.get("usage_examples", [])
-    if examples:
-        result_text += "## Примеры использования:\n\n"
-        for example in examples[:3]:  # Показываем максимум 3 примера
-            result_text += f"```\n{example}\n```\n\n"
-    
-    return result_text
+        text = mcp_formatter.format_object_members_list(
+            request.object_name,
+            request.member_type,
+            methods,
+            properties,
+            events,
+            total
+        )
 
+        _log_mcp_success("list_object_members", count=total)
+        return mcp_formatter.create_success_response([{
+            "type": "text",
+            "text": text
+        }])
 
-def _format_object_info(object_info: dict) -> str:
-    """Форматирует информацию об объекте."""
-    object_name = object_info.get("object", "")
-    total = object_info.get("total", 0)
-    
-    result_text = f"# 📦 Объект: {object_name}\n\n"
-    result_text += f"**Всего элементов:** {total}\n\n"
-    
-    # Методы
-    methods = object_info.get("methods", [])
-    if methods:
-        result_text += f"## 🔨 Методы ({len(methods)}):\n\n"
-        for method in methods[:10]:  # Показываем максимум 10 методов
-            result_text += f"- **{method.get('name', '')}**"
-            if method.get('syntax_ru'):
-                result_text += f" - `{method['syntax_ru']}`"
-            if method.get('description'):
-                desc = method['description'][:100] + "..." if len(method['description']) > 100 else method['description']
-                result_text += f"\n  {desc}"
-            result_text += "\n"
-        result_text += "\n"
-    
-    # Свойства
-    properties = object_info.get("properties", [])
-    if properties:
-        result_text += f"## 📋 Свойства ({len(properties)}):\n\n"
-        for prop in properties[:10]:  # Показываем максимум 10 свойств
-            result_text += f"- **{prop.get('name', '')}** ({prop.get('type', '')})"
-            if prop.get('description'):
-                desc = prop['description'][:100] + "..." if len(prop['description']) > 100 else prop['description']
-                result_text += f" - {desc}"
-            result_text += "\n"
-        result_text += "\n"
-    
-    # События
-    events = object_info.get("events", [])
-    if events:
-        result_text += f"## ⚡ События ({len(events)}):\n\n"
-        for event in events[:10]:  # Показываем максимум 10 событий
-            result_text += f"- **{event.get('name', '')}**"
-            if event.get('description'):
-                desc = event['description'][:100] + "..." if len(event['description']) > 100 else event['description']
-                result_text += f" - {desc}"
-            result_text += "\n"
-        result_text += "\n"
-    
-    return result_text
+    except Exception as e:
+        _log_mcp_error("list_object_members", str(e))
+        return mcp_formatter.create_error_response("Ошибка получения элементов", str(e))

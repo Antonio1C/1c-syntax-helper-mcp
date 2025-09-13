@@ -1,25 +1,45 @@
 """Модели для MCP Protocol."""
 
-from typing import List, Optional, Dict, Any, Union
+from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field
 from enum import Enum
 
 
 class MCPToolType(str, Enum):
     """Типы MCP инструментов."""
-    SEARCH_1C_SYNTAX = "search_1c_syntax"
-    GET_1C_FUNCTION_DETAILS = "get_1c_function_details"  
-    GET_1C_OBJECT_INFO = "get_1c_object_info"
+    FIND_1C_HELP = "find_1c_help"
+    GET_SYNTAX_INFO = "get_syntax_info"
+    GET_QUICK_REFERENCE = "get_quick_reference"
+    SEARCH_BY_CONTEXT = "search_by_context"
+    LIST_OBJECT_MEMBERS = "list_object_members"
 
 
 class DocumentationType(str, Enum):
     """Типы документации 1С."""
     GLOBAL_FUNCTION = "global_function"
     GLOBAL_PROCEDURE = "global_procedure"
-    OBJECT_METHOD = "object_method"
+    GLOBAL_EVENT = "global_event"
+    OBJECT_FUNCTION = "object_function"
+    OBJECT_PROCEDURE = "object_procedure"
     OBJECT_PROPERTY = "object_property"
     OBJECT_EVENT = "object_event"
+    OBJECT_CONSTRUCTOR = "object_constructor"
     OBJECT = "object"
+
+
+class ContextType(str, Enum):
+    """Типы контекстов поиска."""
+    GLOBAL = "global"
+    OBJECT = "object"
+    ALL = "all"
+
+
+class MemberType(str, Enum):
+    """Типы элементов объекта."""
+    ALL = "all"
+    METHODS = "methods"
+    PROPERTIES = "properties"
+    EVENTS = "events"
 
 
 class MCPRequest(BaseModel):
@@ -28,58 +48,43 @@ class MCPRequest(BaseModel):
     arguments: Dict[str, Any]
 
 
-class SearchRequest(BaseModel):
-    """Модель запроса поиска."""
+class Find1CHelpRequest(BaseModel):
+    """Модель запроса универсального поиска справки."""
     query: str = Field(..., description="Поисковый запрос")
+    limit: Optional[int] = Field(5, description="Максимальное количество результатов")
+
+
+class GetSyntaxInfoRequest(BaseModel):
+    """Модель запроса полной технической информации."""
+    element_name: str = Field(..., description="Точное имя элемента")
+    object_name: Optional[str] = Field(None, description="Имя объекта для методов/свойств")
+    include_examples: Optional[bool] = Field(True, description="Включать примеры")
+
+
+class GetQuickReferenceRequest(BaseModel):
+    """Модель запроса краткой справки."""
+    element_name: str = Field(..., description="Имя элемента")
+    object_name: Optional[str] = Field(None, description="Имя объекта")
+
+
+class SearchByContextRequest(BaseModel):
+    """Модель запроса поиска с фильтром по контексту."""
+    query: str = Field(..., description="Поисковый запрос")
+    context: ContextType = Field(..., description="Контекст поиска")
+    object_name: Optional[str] = Field(None, description="Конкретный объект для фильтрации")
     limit: Optional[int] = Field(10, description="Максимальное количество результатов")
 
 
-class FunctionDetailsRequest(BaseModel):
-    """Модель запроса деталей функции."""
-    function_name: str = Field(..., description="Имя функции")
-
-
-class ObjectInfoRequest(BaseModel):
-    """Модель запроса информации об объекте."""
+class ListObjectMembersRequest(BaseModel):
+    """Модель запроса списка элементов объекта."""
     object_name: str = Field(..., description="Имя объекта")
-
-
-class ParameterInfo(BaseModel):
-    """Информация о параметре."""
-    name: str
-    type: str
-    description: str
-    required: bool = True
-
-
-class FunctionInfo(BaseModel):
-    """Информация о функции/методе."""
-    type: DocumentationType
-    name: str
-    object: Optional[str] = None
-    syntax_ru: str
-    syntax_en: Optional[str] = None
-    description: str
-    parameters: List[ParameterInfo] = []
-    return_type: Optional[str] = None
-    version_from: Optional[str] = None
-    examples: List[str] = []
-    source_file: Optional[str] = None
-
-
-class ObjectInfo(BaseModel):
-    """Информация об объекте."""
-    object: str
-    description: str
-    methods: List[str] = []
-    properties: List[str] = []
-    events: List[str] = []
-    version_from: Optional[str] = None
+    member_type: MemberType = Field(MemberType.ALL, description="Тип элементов")
+    limit: Optional[int] = Field(50, description="Максимальное количество результатов")
 
 
 class MCPResponse(BaseModel):
     """Базовая модель MCP ответа."""
-    content: Union[List[FunctionInfo], ObjectInfo, Dict[str, Any]]
+    content: List[Dict[str, str]]
     error: Optional[str] = None
 
 

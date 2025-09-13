@@ -56,7 +56,7 @@ class ElasticsearchClient:
             
         except ConnectionError as e:
             logger.error(f"Ошибка подключения к Elasticsearch: {e}")
-            raise ConnectionFailedError(f"Failed to connect to Elasticsearch: {e}")
+            return False
         except Exception as e:
             logger.error(f"Неожиданная ошибка при подключении к Elasticsearch: {e}")
             return False

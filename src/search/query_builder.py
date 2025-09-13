@@ -43,7 +43,7 @@ class QueryBuilder:
                 "bool": {
                     "should": [
                         {"term": {"name.keyword": {"value": function_name, "boost": 3.0}}},
-                        {"term": {"full_path.keyword": {"value": function_name, "boost": 2.0}}},
+                        {"term": {"full_path": {"value": function_name, "boost": 2.0}}},
                         {"match_phrase": {"name": {"query": function_name, "boost": 1.5}}}
                     ]
                 }
@@ -60,15 +60,15 @@ class QueryBuilder:
             "query": {
                 "bool": {
                     "should": [
-                        {"term": {"object.keyword": {"value": object_name, "boost": 3.0}}},
-                        {"prefix": {"full_path.keyword": {"value": f"{object_name}.", "boost": 2.0}}},
+                        {"term": {"object": {"value": object_name, "boost": 3.0}}},
+                        {"prefix": {"full_path": {"value": f"{object_name}.", "boost": 2.0}}},
                         {"match": {"full_path": {"query": object_name, "boost": 1.5}}}
                     ]
                 }
             },
             "size": limit,
             "sort": [
-                {"type.keyword": {"order": "asc"}},
+                {"type": {"order": "asc"}},
                 {"name.keyword": {"order": "asc"}}
             ]
         }

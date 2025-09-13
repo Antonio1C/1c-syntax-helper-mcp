@@ -9,7 +9,7 @@ import os
 class ElasticsearchConfig(BaseModel):
     """Конфигурация Elasticsearch."""
     url: str = "http://localhost:9200"
-    index_name: str = "1c_docs_index"
+    index_name: str = "help1c_docs"
     timeout: int = 30
     max_retries: int = 3
 
@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     elasticsearch_host: str = "192.168.0.12"
     elasticsearch_port: str = "9200"
     elasticsearch_url: str = "http://localhost:9200"
-    elasticsearch_index: str = "1c_docs_index"
+    elasticsearch_index: str = "help1c_docs"
     elasticsearch_timeout: int = 30
     elasticsearch_max_retries: str = "3"
     
