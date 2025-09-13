@@ -61,8 +61,14 @@ async def test_hbk_parsing():
         print(f"📁 Найден файл: {hbk_file}")
         print(f"📊 Размер: {hbk_file.stat().st_size / 1024 / 1024:.1f} МБ")
         
+        # Создаем парсер с выводом путей файлов
+        class HBKParserWithLogging(HBKParser):
+            def _create_document_from_html(self, entry, result):
+                print(f"📄 Обрабатывается файл в архиве: {entry.path}")
+                return super()._create_document_from_html(entry, result)
+        
         # Парсим файл с ограничениями для быстрого тестирования
-        parser = HBKParser(max_files_per_type=3, max_total_files=50)
+        parser = HBKParserWithLogging(max_files_per_type=3, max_total_files=50)
         parsed_hbk = parser.parse_file(str(hbk_file))
         
         if not parsed_hbk:

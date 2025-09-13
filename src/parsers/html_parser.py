@@ -48,17 +48,13 @@ class HTMLParser:
             # Извлекаем основную информацию
             self._extract_title_and_description(soup, doc)
             
-            # Для объектов переопределяем object из заголовка
-            if doc.type == DocumentType.OBJECT:
+            # Для всех типов кроме глобальных переопределяем object из заголовка
+            if doc.type not in (DocumentType.GLOBAL_FUNCTION, DocumentType.GLOBAL_PROCEDURE, DocumentType.GLOBAL_EVENT):
                 doc.object = self._extract_object_name_from_title(soup)
-            elif doc.type == DocumentType.OBJECT_PROPERTY:
-                # Для свойств объектов также переопределяем object
-                doc.object = self._extract_object_name_from_title(soup)
-                # И извлекаем информацию об использовании
+            
+            # Для свойств объектов дополнительно извлекаем информацию об использовании
+            if doc.type == DocumentType.OBJECT_PROPERTY:
                 self._extract_usage(soup, doc)
-            elif doc.type == DocumentType.OBJECT_EVENT:
-                # Для событий объектов также переопределяем object
-                doc.object = self._extract_object_name_from_title(soup)
             
             # Для объектов извлекаем методы, свойства и события
             if doc.type == DocumentType.OBJECT:
@@ -364,7 +360,7 @@ class HTMLParser:
                         break
                     
                     if hasattr(elem, 'get_text'):
-                        text = elem.get_text(strip=True)
+                        text = elem.get_text().strip()  # Сохраняем внутренние пробелы
                         if text and len(text) > 3:  # Игнорируем короткие фрагменты
                             description_parts.append(text)
                     elif isinstance(elem, str):
@@ -389,7 +385,7 @@ class HTMLParser:
                 # Проверяем следующий элемент после заголовка
                 next_elem = header.next_sibling
                 if next_elem:
-                    syntax_text = next_elem.get_text(strip=True) if hasattr(next_elem, 'get_text') else str(next_elem).strip()
+                    syntax_text = next_elem.get_text().strip() if hasattr(next_elem, 'get_text') else str(next_elem).strip()
                     if '(' in syntax_text and syntax_text:
                         doc.syntax_ru = syntax_text
                         return
@@ -399,7 +395,7 @@ class HTMLParser:
                 elem = header.next_sibling
                 while elem and not (hasattr(elem, 'get') and hasattr(elem, 'get_text') and elem.get('class') == ['V8SH_chapter']):
                     if hasattr(elem, 'get_text'):
-                        remaining_text += elem.get_text(strip=True) + " "
+                        remaining_text += elem.get_text().strip() + " "
                     elif isinstance(elem, str):
                         remaining_text += elem.strip() + " "
                     elem = elem.next_sibling
