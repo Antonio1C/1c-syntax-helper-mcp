@@ -4,7 +4,8 @@ from src.models.mcp_models import (
     MCPResponse, Find1CHelpRequest, GetSyntaxInfoRequest, GetQuickReferenceRequest,
     SearchByContextRequest, ListObjectMembersRequest
 )
-from src.search.search_service import search_service
+from src.core.elasticsearch import ElasticsearchClient
+from src.search.search_service import SearchService
 from src.handlers.mcp_formatter import mcp_formatter
 from src.core.logging import get_logger
 
@@ -30,11 +31,12 @@ def _log_mcp_error(tool_name: str, error: str, **context):
                 extra={"extra_data": {"tool": tool_name, "status": "error", "error": error, **context}})
 
 
-async def handle_find_1c_help(request: Find1CHelpRequest) -> MCPResponse:
+async def handle_find_1c_help(request: Find1CHelpRequest, es_client: ElasticsearchClient) -> MCPResponse:
     """Универсальный поиск справки по любому элементу 1С."""
     _log_mcp_request("find_1c_help", query=request.query, limit=request.limit)
     
     try:
+        search_service = SearchService(es_client)
         results = await search_service.find_help_by_query(request.query, request.limit)
         
         if results.get("error"):
@@ -61,12 +63,13 @@ async def handle_find_1c_help(request: Find1CHelpRequest) -> MCPResponse:
         return mcp_formatter.create_error_response("Внутренняя ошибка поиска", str(e))
 
 
-async def handle_get_syntax_info(request: GetSyntaxInfoRequest) -> MCPResponse:
+async def handle_get_syntax_info(request: GetSyntaxInfoRequest, es_client: ElasticsearchClient) -> MCPResponse:
     """Получить полную техническую информацию об элементе."""
     _log_mcp_request("get_syntax_info", element_name=request.element_name, 
                     object_name=request.object_name, include_examples=request.include_examples)
     
     try:
+        search_service = SearchService(es_client)
         result = await search_service.get_detailed_syntax_info(
             request.element_name, 
             request.object_name, 
@@ -100,11 +103,12 @@ async def handle_get_syntax_info(request: GetSyntaxInfoRequest) -> MCPResponse:
         return mcp_formatter.create_error_response("Ошибка получения информации", str(e))
 
 
-async def handle_get_quick_reference(request: GetQuickReferenceRequest) -> MCPResponse:
+async def handle_get_quick_reference(request: GetQuickReferenceRequest, es_client: ElasticsearchClient) -> MCPResponse:
     """Получить краткую справку."""
     _log_mcp_request("get_quick_reference", element_name=request.element_name, object_name=request.object_name)
     
     try:
+        search_service = SearchService(es_client)
         result = await search_service.get_detailed_syntax_info(
             request.element_name, 
             request.object_name, 
@@ -128,12 +132,13 @@ async def handle_get_quick_reference(request: GetQuickReferenceRequest) -> MCPRe
         return mcp_formatter.create_error_response("Ошибка получения справки", str(e))
 
 
-async def handle_search_by_context(request: SearchByContextRequest) -> MCPResponse:
+async def handle_search_by_context(request: SearchByContextRequest, es_client: ElasticsearchClient) -> MCPResponse:
     """Поиск с фильтром по контексту."""
     _log_mcp_request("search_by_context", query=request.query, context=request.context, 
                     object_name=request.object_name, limit=request.limit)
     
     try:
+        search_service = SearchService(es_client)
         results = await search_service.search_with_context_filter(
             request.query,
             request.context, 
@@ -166,10 +171,11 @@ async def handle_search_by_context(request: SearchByContextRequest) -> MCPRespon
         return mcp_formatter.create_error_response("Ошибка поиска", str(e))
 
 
-async def handle_list_object_members(request: ListObjectMembersRequest) -> MCPResponse:
+async def handle_list_object_members(request: ListObjectMembersRequest, es_client: ElasticsearchClient) -> MCPResponse:
     """Получить список элементов объекта."""
     _log_mcp_request("list_object_members", object_name=request.object_name, member_type=request.member_type, limit=request.limit)
     try:
+        search_service = SearchService(es_client)
         result = await search_service.get_object_members_list(
             request.object_name,
             request.member_type,

@@ -1,19 +1,22 @@
 """Index management endpoints."""
 
 from pathlib import Path
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 
 from src.core.config import settings
-from src.core.elasticsearch import es_client
+from src.core.elasticsearch import ElasticsearchClient
 from src.core.logging import get_logger
 from src.core.startup import index_hbk_file
+from src.api.dependencies import get_elasticsearch_client
 
 router = APIRouter(prefix="/index", tags=["index"])
 logger = get_logger(__name__)
 
 
 @router.get("/status")
-async def index_status():
+async def index_status(
+    es_client: ElasticsearchClient = Depends(get_elasticsearch_client)
+):
     """Статус индексации."""
     es_connected = await es_client.is_connected()
     index_exists = await es_client.index_exists() if es_connected else False
@@ -28,7 +31,9 @@ async def index_status():
 
 
 @router.post("/rebuild")
-async def rebuild_index():
+async def rebuild_index(
+    es_client: ElasticsearchClient = Depends(get_elasticsearch_client)
+):
     """Переиндексация документации из .hbk файла."""
     try:
         # Проверяем подключение к Elasticsearch
@@ -57,7 +62,7 @@ async def rebuild_index():
         hbk_file = hbk_files[0]
         logger.info(f"Начинаем переиндексацию файла: {hbk_file}")
         
-        success = await index_hbk_file(str(hbk_file))
+        success = await index_hbk_file(str(hbk_file), es_client)
         
         if success:
             docs_count = await es_client.get_documents_count()

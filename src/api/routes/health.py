@@ -3,21 +3,22 @@
 from fastapi import APIRouter, Depends
 
 from src.models.mcp_models import HealthResponse
-from src.core.elasticsearch import es_client
+from src.core.elasticsearch import ElasticsearchClient
 from src.core.metrics import get_metrics_collector
 from src.core.config import settings
+from src.api.dependencies import get_elasticsearch_client
 
 router = APIRouter(tags=["health"])
 
 
 @router.get("/health", response_model=HealthResponse)
-async def health_check(metrics=Depends(get_metrics_collector)):
+async def health_check(
+    es_client: ElasticsearchClient = Depends(get_elasticsearch_client),
+    metrics=Depends(get_metrics_collector)
+):
     """Проверка состояния системы."""
     async with metrics.timer("health_check.duration"):
-        # Подключаемся к Elasticsearch если еще не подключены
-        if not await es_client.is_connected():
-            await es_client.connect()
-        
+        # Клиент уже подключён через dependency
         es_connected = await es_client.is_connected()
         index_exists = await es_client.index_exists() if es_connected else False
         docs_count = await es_client.get_documents_count() if index_exists else None

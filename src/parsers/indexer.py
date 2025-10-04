@@ -5,7 +5,7 @@ import asyncio
 from datetime import datetime
 
 from src.models.doc_models import Documentation, ParsedHBK
-from src.core.elasticsearch import es_client
+from src.core.elasticsearch import ElasticsearchClient
 from src.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -14,21 +14,22 @@ logger = get_logger(__name__)
 class ElasticsearchIndexer:
     """Индексатор документации в Elasticsearch."""
     
-    def __init__(self):
+    def __init__(self, es_client: ElasticsearchClient):
+        self.es_client = es_client
         self.batch_size = 100
         self.max_retries = 3
     
     async def index_documentation(self, parsed_hbk: ParsedHBK) -> bool:
         """Индексирует документацию из ParsedHBK в Elasticsearch."""
-        if not await es_client.is_connected():
+        if not await self.es_client.is_connected():
             logger.error("Нет подключения к Elasticsearch")
             return False
         
         try:
             # Проверяем/создаем индекс
-            if not await es_client.index_exists():
+            if not await self.es_client.index_exists():
                 logger.info("Создаем индекс Elasticsearch")
-                await es_client.create_index()
+                await self.es_client.create_index()
             
             # Индексируем документы батчами
             total_docs = len(parsed_hbk.documentation)
@@ -44,7 +45,7 @@ class ElasticsearchIndexer:
                     logger.error(f"Ошибка индексации батча {i}-{i+len(batch)}")
             
             # Принудительно обновляем индекс для немедленного отражения изменений
-            await es_client.refresh_index()
+            await self.es_client.refresh_index()
             
             return indexed_count == total_docs
             
@@ -65,7 +66,7 @@ class ElasticsearchIndexer:
                 # Добавляем действие индексации
                 bulk_body.append({
                     "index": {
-                        "_index": es_client._config.index_name,
+                        "_index": self.es_client._config.index_name,
                         "_id": doc.id
                     }
                 })
@@ -74,8 +75,8 @@ class ElasticsearchIndexer:
                 bulk_body.append(self._prepare_document(doc))
             
             # Выполняем bulk запрос
-            if es_client._client:
-                response = await es_client._client.bulk(body=bulk_body)
+            if self.es_client._client:
+                response = await self.es_client._client.bulk(body=bulk_body)
                 
                 # Проверяем ошибки
                 if response.get("errors"):
@@ -125,12 +126,12 @@ class ElasticsearchIndexer:
         """Переиндексирует всю документацию (удаляет старый индекс и создает новый)."""
         try:            
             # Удаляем старый индекс если существует
-            if await es_client.index_exists():
-                if es_client._client:
-                    await es_client._client.indices.delete(index=es_client._config.index_name)
+            if await self.es_client.index_exists():
+                if self.es_client._client:
+                    await self.es_client._client.indices.delete(index=self.es_client._config.index_name)
             
             # Создаем новый индекс
-            await es_client.create_index()
+            await self.es_client.create_index()
             
             # Индексируем документы
             return await self.index_documentation(parsed_hbk)
@@ -142,27 +143,27 @@ class ElasticsearchIndexer:
     async def get_index_stats(self) -> Optional[Dict[str, Any]]:
         """Получает статистику индекса."""
         try:
-            if not await es_client.is_connected():
+            if not await self.es_client.is_connected():
                 return None
             
-            if not await es_client.index_exists():
+            if not await self.es_client.index_exists():
                 return {"exists": False, "documents_count": 0}
             
             # Получаем статистику
-            if es_client._client:
-                stats_response = await es_client._client.indices.stats(
-                    index=es_client._config.index_name
+            if self.es_client._client:
+                stats_response = await self.es_client._client.indices.stats(
+                    index=self.es_client._config.index_name
                 )
                 
-                count_response = await es_client._client.count(
-                    index=es_client._config.index_name
+                count_response = await self.es_client._client.count(
+                    index=self.es_client._config.index_name
                 )
                 
                 return {
                     "exists": True,
                     "documents_count": count_response.get("count", 0),
-                    "size_in_bytes": stats_response["indices"][es_client._config.index_name]["total"]["store"]["size_in_bytes"],
-                    "index_name": es_client._config.index_name
+                    "size_in_bytes": stats_response["indices"][self.es_client._config.index_name]["total"]["store"]["size_in_bytes"],
+                    "index_name": self.es_client._config.index_name
                 }
             
             return None
@@ -174,7 +175,7 @@ class ElasticsearchIndexer:
     async def search_documents(self, query: str, limit: int = 10) -> List[Dict[str, Any]]:
         """Простой поиск документов для тестирования."""
         try:
-            if not await es_client.is_connected():
+            if not await self.es_client.is_connected():
                 return []
             
             search_query = {
@@ -191,7 +192,7 @@ class ElasticsearchIndexer:
                 ]
             }
             
-            response = await es_client.search(search_query)
+            response = await self.es_client.search(search_query)
             
             if response and "hits" in response:
                 return [hit["_source"] for hit in response["hits"]["hits"]]
@@ -201,7 +202,3 @@ class ElasticsearchIndexer:
         except Exception as e:
             logger.error(f"Ошибка поиска: {e}")
             return []
-
-
-# Глобальный экземпляр индексатора
-indexer = ElasticsearchIndexer()

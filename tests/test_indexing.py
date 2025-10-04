@@ -9,9 +9,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from src.core.config import settings
-from src.core.elasticsearch import es_client
+from src.core.elasticsearch import es_client, ElasticsearchClient
 from src.parsers.hbk_parser import HBKParser
-from src.parsers.indexer import indexer
+from src.parsers.indexer import ElasticsearchIndexer
 
 
 @pytest.mark.asyncio
@@ -25,6 +25,9 @@ async def test_indexing():
         if not connected:
             print("❌ Elasticsearch недоступен")
             return False
+        
+        # Создаем индексатор с передачей es_client
+        indexer = ElasticsearchIndexer(es_client)
         
         # Парсим .hbk файл
         hbk_dir = Path(settings.data.hbk_directory)

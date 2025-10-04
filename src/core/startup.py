@@ -4,15 +4,20 @@ from pathlib import Path
 
 from src.core.config import settings
 from src.core.logging import get_logger
-from src.core.elasticsearch import es_client
+from src.core.elasticsearch import ElasticsearchClient
 from src.parsers.hbk_parser import HBKParser
 from src.parsers.indexer import indexer
 
 logger = get_logger(__name__)
 
 
-async def auto_index_on_startup():
-    """Автоматическая индексация при запуске, если найден .hbk файл."""
+async def auto_index_on_startup(es_client: ElasticsearchClient):
+    """
+    Автоматическая индексация при запуске, если найден .hbk файл.
+    
+    Args:
+        es_client: Подключённый клиент Elasticsearch
+    """
     try:
         # Ищем .hbk файлы в директории данных
         hbk_dir = Path(settings.data.hbk_directory)
@@ -37,7 +42,7 @@ async def auto_index_on_startup():
         hbk_file = hbk_files[0]
         logger.info(f"Запускаем автоматическую индексацию файла: {hbk_file}")
         
-        success = await index_hbk_file(str(hbk_file))
+        success = await index_hbk_file(str(hbk_file), es_client)
         if success:
             logger.info("Автоматическая индексация завершена успешно")
         else:
@@ -47,8 +52,17 @@ async def auto_index_on_startup():
         logger.error(f"Ошибка при автоматической индексации: {e}")
 
 
-async def index_hbk_file(file_path: str) -> bool:
-    """Индексирует .hbk файл в Elasticsearch."""
+async def index_hbk_file(file_path: str, es_client: ElasticsearchClient) -> bool:
+    """
+    Индексирует .hbk файл в Elasticsearch.
+    
+    Args:
+        file_path: Путь к .hbk файлу
+        es_client: Подключённый клиент Elasticsearch
+        
+    Returns:
+        bool: True если индексация успешна, False иначе
+    """
     try:
         logger.info(f"Начинаем индексацию файла: {file_path}")
         

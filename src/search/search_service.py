@@ -3,7 +3,7 @@
 from typing import List, Dict, Any, Optional
 import time
 
-from src.core.elasticsearch import es_client
+from src.core.elasticsearch import ElasticsearchClient
 from src.core.logging import get_logger
 from src.search.query_builder import QueryBuilder
 from src.search.ranker import SearchRanker
@@ -15,7 +15,8 @@ logger = get_logger(__name__)
 class SearchService:
     """Сервис поиска по документации 1С."""
     
-    def __init__(self):
+    def __init__(self, es_client: ElasticsearchClient):
+        self.es_client = es_client
         self.query_builder = QueryBuilder()
         self.ranker = SearchRanker()
         self.formatter = SearchFormatter()
@@ -26,7 +27,7 @@ class SearchService:
         
         try:
             # Проверяем подключение к Elasticsearch
-            if not await es_client.is_connected():
+            if not await self.es_client.is_connected():
                 return {
                     "results": [],
                     "total": 0,
@@ -43,7 +44,7 @@ class SearchService:
             )
             
             # Выполняем поиск
-            response = await es_client.search(es_query)
+            response = await self.es_client.search(es_query)
             
             if not response:
                 return {
@@ -124,7 +125,7 @@ class SearchService:
                 # Для поиска без объекта используем точный запрос
                 elasticsearch_query = self.query_builder.build_exact_query(element_name)
             
-            response = await es_client.search(elasticsearch_query)
+            response = await self.es_client.search(elasticsearch_query)
             
             if response.get('hits', {}).get('total', {}).get('value', 0) > 0:
                 doc = response['hits']['hits'][0]['_source']
@@ -186,7 +187,7 @@ class SearchService:
                     }
                 }
             
-            response = await es_client.search(elasticsearch_query)
+            response = await self.es_client.search(elasticsearch_query)
             
             # Обрабатываем ответ
             if not response:
@@ -261,7 +262,7 @@ class SearchService:
                 "sort": [{"name.keyword": {"order": "asc"}}]
             }
             
-            response = await es_client.search(elasticsearch_query)
+            response = await self.es_client.search(elasticsearch_query)
             
             # Группируем результаты
             methods = []
@@ -299,7 +300,3 @@ class SearchService:
                 "total": 0,
                 "error": str(e)
             }
-
-
-# Глобальный экземпляр сервиса поиска
-search_service = SearchService()

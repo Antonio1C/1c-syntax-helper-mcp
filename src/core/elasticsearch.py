@@ -193,5 +193,12 @@ class ElasticsearchClient:
             return None
 
 
-# Глобальный экземпляр клиента
+# Factory function для создания клиента (для обратной совместимости)
+def create_elasticsearch_client() -> ElasticsearchClient:
+    """Создаёт новый экземпляр ElasticsearchClient."""
+    return ElasticsearchClient()
+
+
+# Глобальный экземпляр для обратной совместимости (будет удалён в следующих спринтах)
+# TODO: Удалить после миграции всех компонентов на DI
 es_client = ElasticsearchClient()

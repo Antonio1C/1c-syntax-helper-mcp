@@ -3,11 +3,12 @@
 import json
 import asyncio
 import time
-from fastapi import APIRouter, Request, HTTPException
+from fastapi import APIRouter, Request, HTTPException, Depends
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from src.core.logging import get_logger
-from src.core.elasticsearch import es_client
+from src.core.elasticsearch import ElasticsearchClient
+from src.api.dependencies import get_elasticsearch_client
 from src.models.mcp_models import (
     MCPRequest, MCPResponse, MCPToolsResponse, MCPTool, MCPToolParameter, MCPToolType,
     Find1CHelpRequest, GetSyntaxInfoRequest, GetQuickReferenceRequest,
@@ -169,7 +170,10 @@ async def mcp_sse_endpoint():
 
 
 @router.post("")
-async def mcp_jsonrpc_endpoint(request: Request):
+async def mcp_jsonrpc_endpoint(
+    request: Request,
+    es_client: ElasticsearchClient = Depends(get_elasticsearch_client)
+):
     """MCP JSON-RPC endpoint для обработки MCP протокола."""
     try:
         body = await request.body()
@@ -258,7 +262,7 @@ async def mcp_jsonrpc_endpoint(request: Request):
             mcp_request = MCPRequest(tool=tool_name, arguments=arguments)
             
             # Вызываем наш существующий обработчик
-            result = await mcp_endpoint_handler(mcp_request)
+            result = await mcp_endpoint_handler(mcp_request, es_client)
             
             return JSONResponse(content={
                 "jsonrpc": "2.0",
@@ -296,7 +300,7 @@ async def mcp_jsonrpc_endpoint(request: Request):
         )
 
 
-async def mcp_endpoint_handler(request: MCPRequest):
+async def mcp_endpoint_handler(request: MCPRequest, es_client: ElasticsearchClient):
     """Внутренний обработчик MCP запросов."""
     logger.info(f"Получен MCP запрос: {request.tool}")
     
@@ -310,15 +314,15 @@ async def mcp_endpoint_handler(request: MCPRequest):
         
         # Маршрутизируем запрос к новым обработчикам
         if request.tool == MCPToolType.FIND_1C_HELP:
-            return await handle_find_1c_help(Find1CHelpRequest(**request.arguments))
+            return await handle_find_1c_help(Find1CHelpRequest(**request.arguments), es_client)
         elif request.tool == MCPToolType.GET_SYNTAX_INFO:
-            return await handle_get_syntax_info(GetSyntaxInfoRequest(**request.arguments))
+            return await handle_get_syntax_info(GetSyntaxInfoRequest(**request.arguments), es_client)
         elif request.tool == MCPToolType.GET_QUICK_REFERENCE:
-            return await handle_get_quick_reference(GetQuickReferenceRequest(**request.arguments))
+            return await handle_get_quick_reference(GetQuickReferenceRequest(**request.arguments), es_client)
         elif request.tool == MCPToolType.SEARCH_BY_CONTEXT:
-            return await handle_search_by_context(SearchByContextRequest(**request.arguments))
+            return await handle_search_by_context(SearchByContextRequest(**request.arguments), es_client)
         elif request.tool == MCPToolType.LIST_OBJECT_MEMBERS:
-            return await handle_list_object_members(ListObjectMembersRequest(**request.arguments))
+            return await handle_list_object_members(ListObjectMembersRequest(**request.arguments), es_client)
         else:
             raise HTTPException(
                 status_code=400,
