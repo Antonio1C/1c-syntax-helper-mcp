@@ -1,5 +1,6 @@
 """Application lifecycle management."""
 
+import asyncio
 from fastapi import FastAPI
 
 from src.core.logging import get_logger
@@ -30,7 +31,7 @@ async def startup(app: FastAPI):
     # Инициализация менеджера фоновой индексации
     indexing_manager = setup_indexing_manager(
         shutdown_timeout=30,
-        progress_log_interval=1000
+        progress_log_interval=500
     )
     app.state.indexing_manager = indexing_manager
     logger.info("Менеджер фоновой индексации инициализирован")

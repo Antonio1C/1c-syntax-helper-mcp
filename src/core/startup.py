@@ -92,9 +92,11 @@ async def index_hbk_file(file_path: str, es_client: ElasticsearchClient) -> bool
         
         logger.info(f"Начинаем синхронную индексацию файла: {file_path}")
         
-        # Парсим .hbk файл
+        # Парсим .hbk файл в отдельном потоке (не блокируем event loop)
         parser = HBKParser()
-        parsed_hbk = parser.parse_file(file_path)
+        logger.info("Запускаем парсинг HBK файла в отдельном потоке...")
+        parsed_hbk = await asyncio.to_thread(parser.parse_file, file_path)
+        logger.info("Парсинг HBK файла завершен")
         
         if not parsed_hbk:
             logger.error("Ошибка парсинга .hbk файла")
@@ -107,7 +109,7 @@ async def index_hbk_file(file_path: str, es_client: ElasticsearchClient) -> bool
         logger.info(f"Найдено {len(parsed_hbk.documentation)} документов для индексации")
         
         # Индексируем в Elasticsearch
-        indexer = ElasticsearchIndexer()
+        indexer = ElasticsearchIndexer(es_client)
         success = await indexer.reindex_all(parsed_hbk)
         
         if success:

@@ -30,7 +30,7 @@ async def health_check(
     async with metrics.timer("health_check.duration"):
         # Клиент уже подключён через dependency
         es_connected = await es_client.is_connected()
-        index_exists = await es_client.index_exists() if es_connected else False
+        index_exists = bool(await es_client.index_exists()) if es_connected else False
         docs_count = await es_client.get_documents_count() if index_exists else None
         
         # Получаем статус фоновой индексации

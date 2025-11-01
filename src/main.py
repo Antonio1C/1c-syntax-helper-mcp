@@ -96,9 +96,9 @@ if __name__ == "__main__":
     import uvicorn
     
     uvicorn.run(
-        "src.main:app",
+        app,  # Передаем объект напрямую, а не строку
         host=settings.server.host,
         port=settings.server.port,
         log_level=settings.server.log_level.lower(),
-        reload=settings.debug
+        reload=False  # Отключаем reload для прямой передачи объекта
     )

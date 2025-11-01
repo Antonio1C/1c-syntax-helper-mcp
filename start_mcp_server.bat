@@ -43,7 +43,7 @@ echo To force reindex, use: start_mcp_server.bat --reindex
 echo Для принудительной переиндексации: start_mcp_server.bat --reindex
 echo.
 
-python -m uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload %*
+venv\Scripts\python.exe src/main.py %*
 
 echo Server stopped.
 echo Сервер остановлен.

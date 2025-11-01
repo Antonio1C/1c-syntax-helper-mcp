@@ -43,8 +43,8 @@ Write-Host "To force reindex, use: .\start_mcp_server.ps1 --reindex" -Foreground
 Write-Host "Для принудительной переиндексации: .\start_mcp_server.ps1 --reindex" -ForegroundColor Cyan
 Write-Host ""
 
-# Передаём все аргументы скрипта в uvicorn
-python -m uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload @args
+# Передаём все аргументы скрипта в main.py
+& ".\venv\Scripts\python.exe" src/main.py @args
 
 Write-Host "Server stopped." -ForegroundColor Red
 Write-Host "Сервер остановлен." -ForegroundColor Red

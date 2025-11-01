@@ -92,10 +92,17 @@ class BackgroundIndexingManager:
             if not Path(file_path).exists():
                 raise FileNotFoundError(f"Файл не найден: {file_path}")
             
-            # Парсим .hbk файл
+            # Парсим .hbk файл в отдельном потоке (не блокируем event loop)
             from src.parsers.hbk_parser import HBKParser
             parser = HBKParser()
-            parsed_hbk = parser.parse_file(file_path)
+            
+            # Запускаем синхронный парсинг в executor
+            loop = asyncio.get_event_loop()
+            parsed_hbk = await loop.run_in_executor(
+                None,  # Использует default ThreadPoolExecutor
+                parser.parse_file,
+                file_path
+            )
             
             if not parsed_hbk or not parsed_hbk.documentation:
                 raise ValueError("Не удалось распарсить файл или документация пуста")
@@ -109,7 +116,7 @@ class BackgroundIndexingManager:
             
             # Индексируем с прогрессом
             from src.parsers.indexer import ElasticsearchIndexer
-            indexer = ElasticsearchIndexer()
+            indexer = ElasticsearchIndexer(es_client)
             
             success = await indexer.reindex_all(
                 parsed_hbk,

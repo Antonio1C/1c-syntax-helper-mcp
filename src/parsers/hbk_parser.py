@@ -17,7 +17,7 @@ from src.core.utils import (
     safe_remove_dir,
     validate_file_path
 )
-from src.core.constants import MAX_FILE_SIZE_MB, SUPPORTED_ENCODINGS
+from src.core.constants import MAX_FILE_SIZE_MB, SUPPORTED_ENCODINGS, BATCH_SIZE
 
 logger = get_logger(__name__)
 
@@ -105,32 +105,9 @@ class HBKParser:
         html_files = 0
         st_files = 0
         category_files = 0
-        processed_html = 0  # Счетчик обработанных HTML файлов
         
-        # Параметры ограничений (если заданы, иначе обрабатываем все)
-        min_per_type = self.max_files_per_type or float('inf')  # Без ограничений если None
-        max_total = self.max_total_files or float('inf')        # Без ограничений если None
-        
-        # Целевые типы документации
-        target_types = {
-            'GLOBAL_FUNCTION': 0,
-            'GLOBAL_PROCEDURE': 0, 
-            'GLOBAL_EVENT': 0,
-            'OBJECT_FUNCTION': 0,
-            'OBJECT_PROCEDURE': 0,
-            'OBJECT_PROPERTY': 0,
-            'OBJECT_EVENT': 0,
-            'OBJECT_CONSTRUCTOR': 0,
-            'OBJECT': 0
-        }
-        
-        # Группируем файлы по каталогам и типам
-        global_methods_files = []
-        global_events_files = []
-        global_context_files = []
-        object_constructors_files = []
-        object_events_files = []
-        other_object_files = []
+        # Собираем все HTML файлы
+        html_entries = []
         
         for entry in entries:
             if entry.is_dir:
@@ -144,30 +121,11 @@ class HBKParser:
                 self._parse_categories_file(entry, result)
                 continue
             
-            # Собираем .html файлы по категориям
+            # Собираем .html файлы
             if entry.path.endswith('.html'):
                 html_files += 1
-                
-                # Глобальные методы (функции/процедуры)
-                if ('objects/Global context/methods' in entry.path or 'objects\\Global context\\methods' in entry.path):
-                    global_methods_files.append(entry)
-                # Глобальные события
-                elif ('objects/Global context/events' in entry.path or 'objects\\Global context\\events' in entry.path):
-                    global_events_files.append(entry)
-                # Другие файлы Global context (свойства)
-                elif ('objects/Global context' in entry.path or 'objects\\Global context' in entry.path):
-                    global_context_files.append(entry)
-                # Конструкторы объектов
-                elif ('/ctors/' in entry.path or '\\ctors\\' in entry.path or 
-                      '/ctor/' in entry.path or '\\ctor\\' in entry.path):
-                    object_constructors_files.append(entry)
-                # События объектов (не Global context)
-                elif (('/events/' in entry.path or '\\events\\' in entry.path) and 
-                      'Global context' not in entry.path):
-                    object_events_files.append(entry)
-                # Файлы других объектов
-                elif 'objects/' in entry.path or 'objects\\' in entry.path:
-                    other_object_files.append(entry)
+                if 'objects/' in entry.path or 'objects\\' in entry.path:
+                    html_entries.append(entry)
                 continue
             
             # Анализируем .st файлы (шаблоны)
@@ -175,120 +133,34 @@ class HBKParser:
                 st_files += 1
                 continue
         
-        def check_found_types():
-            """Проверяет, сколько документов каждого типа найдено."""
-            for doc in result.documentation:
-                doc_type = doc.type.name
-                if doc_type in target_types:
-                    target_types[doc_type] += 1
+        logger.info(f"Найдено HTML файлов для парсинга: {len(html_entries)}")
         
-        def all_types_found():
-            """Проверяет, найдены ли минимальные количества всех типов или достигнут лимит файлов."""
-            if self.max_files_per_type is None and self.max_total_files is None:
-                return False  # Без ограничений - обрабатываем все файлы
-            
-            # Если заданы ограничения - проверяем их
-            types_satisfied = all(count >= min_per_type for count in target_types.values()) if self.max_files_per_type else True
-            total_satisfied = processed_html >= max_total if self.max_total_files else True
-            
-            return types_satisfied or total_satisfied
+        # Обрабатываем файлы батчами
+        batch_size = BATCH_SIZE
+        processed_html = 0
         
-        # Стратегия обработки: с ограничениями или полная
-        categories_processed = {
-            'global_methods': 0,
-            'global_events': 0, 
-            'global_context': 0,
-            'object_constructors': 0,
-            'object_events': 0,
-            'other_objects': 0
-        }
+        for i in range(0, len(html_entries), batch_size):
+            batch = html_entries[i:i + batch_size]
+            
+            # Батчевое извлечение
+            filenames = [entry.path for entry in batch]
+            extracted_files = self.extract_batch_files(filenames)
+            
+            # Парсим извлеченные файлы
+            for entry in batch:
+                if entry.path in extracted_files:
+                    entry.content = extracted_files[entry.path]
+                    self._create_document_from_html(entry, result)
+                    processed_html += 1
+                else:
+                    logger.warning(f"Файл не извлечен: {entry.path}")
         
-        # Размер батча зависит от наличия ограничений
-        batch_size = 5 if (self.max_files_per_type or self.max_total_files) else len(max(
-            [global_methods_files, global_events_files, global_context_files, 
-             object_constructors_files, object_events_files, other_object_files], 
-            key=len
-        ))
-        
-        while not all_types_found() and processed_html < max_total:
-            initial_count = processed_html
-            
-            # 1. Обрабатываем глобальные методы
-            for i in range(batch_size):
-                if (categories_processed['global_methods'] + i < len(global_methods_files) and
-                    (target_types['GLOBAL_FUNCTION'] < min_per_type or target_types['GLOBAL_PROCEDURE'] < min_per_type)):
-                    entry = global_methods_files[categories_processed['global_methods'] + i]
-                    self._create_document_from_html(entry, result)
-                    processed_html += 1
-            categories_processed['global_methods'] += batch_size
-            
-            # 2. Обрабатываем глобальные события
-            for i in range(batch_size):
-                if (categories_processed['global_events'] + i < len(global_events_files) and
-                    target_types['GLOBAL_EVENT'] < min_per_type):
-                    entry = global_events_files[categories_processed['global_events'] + i]
-                    self._create_document_from_html(entry, result)
-                    processed_html += 1
-            categories_processed['global_events'] += batch_size
-            
-            # 3. Обрабатываем Global context (свойства)
-            for i in range(batch_size):
-                if (categories_processed['global_context'] + i < len(global_context_files) and
-                    target_types['OBJECT_PROPERTY'] < min_per_type):
-                    entry = global_context_files[categories_processed['global_context'] + i]
-                    self._create_document_from_html(entry, result)
-                    processed_html += 1
-            categories_processed['global_context'] += batch_size
-            
-            # 4. Обрабатываем конструкторы объектов (ищем OBJECT_CONSTRUCTOR)
-            for i in range(batch_size):
-                if (categories_processed['object_constructors'] + i < len(object_constructors_files) and
-                    target_types['OBJECT_CONSTRUCTOR'] < min_per_type):
-                    entry = object_constructors_files[categories_processed['object_constructors'] + i]
-                    self._create_document_from_html(entry, result)
-                    processed_html += 1
-            categories_processed['object_constructors'] += batch_size
-            
-            # 5. Обрабатываем события объектов (ищем OBJECT_EVENT)
-            for i in range(batch_size):
-                if (categories_processed['object_events'] + i < len(object_events_files) and
-                    target_types['OBJECT_EVENT'] < min_per_type):
-                    entry = object_events_files[categories_processed['object_events'] + i]
-                    self._create_document_from_html(entry, result)
-                    processed_html += 1
-            categories_processed['object_events'] += batch_size
-            
-            # 6. Обрабатываем другие объекты
-            for i in range(batch_size):
-                if (categories_processed['other_objects'] + i < len(other_object_files) and
-                    (target_types['OBJECT_FUNCTION'] < min_per_type or 
-                     target_types['OBJECT_PROCEDURE'] < min_per_type or
-                     target_types['OBJECT'] < min_per_type)):
-                    entry = other_object_files[categories_processed['other_objects'] + i]
-                    self._create_document_from_html(entry, result)
-                    processed_html += 1
-            categories_processed['other_objects'] += batch_size
-            
-            # Обновляем счетчики найденных типов
-            target_types = {key: 0 for key in target_types}  # Сбрасываем счетчики
-            check_found_types()
-            
-            # Если за этот проход ничего не обработали, прерываем
-            if processed_html == initial_count:
-                break
+        logger.info(f"Обработано всего: {processed_html} HTML файлов")
         
         # Обновляем статистику
         result.stats = {
             'html_files': html_files,
-            'global_methods_files': len(global_methods_files),
-            'global_events_files': len(global_events_files), 
-            'global_context_files': len(global_context_files),
-            'object_constructors_files': len(object_constructors_files),
-            'object_events_files': len(object_events_files),
-            'other_object_files': len(other_object_files),
             'processed_html': processed_html,
-            'categories_processed': categories_processed,
-            'found_types': target_types,
             'st_files': st_files,
             'category_files': category_files,
             'total_entries': len(entries)
@@ -505,6 +377,67 @@ class HBKParser:
             return None
         finally:
             safe_remove_dir(temp_dir)
+    
+    def extract_batch_files(self, filenames: List[str]) -> Dict[str, bytes]:
+        """
+        Извлекает несколько файлов из архива за одну операцию.
+        
+        Args:
+            filenames: Список имен файлов для извлечения
+            
+        Returns:
+            Словарь {filename: content} с содержимым извлеченных файлов
+        """
+        if not self._zip_command or not self._archive_path:
+            logger.error("Архив не был проинициализирован")
+            return {}
+        
+        if not filenames:
+            return {}
+        
+        temp_dir = create_safe_temp_dir("hbk_batch_extract_")
+        extracted_files = {}
+        
+        try:
+            # Подготавливаем команду для извлечения всех файлов
+            cmd = [self._zip_command, 'x', str(self._archive_path), f'-o{temp_dir}', '-y']
+            cmd.extend(filenames)
+            
+            # Извлекаем все файлы одной командой
+            result = safe_subprocess_run(cmd, timeout=120)
+            
+            if result.returncode == 0:
+                # Читаем все извлеченные файлы
+                for root, dirs, files in os.walk(temp_dir):
+                    for file in files:
+                        file_path = Path(root) / file
+                        # Вычисляем относительный путь от temp_dir
+                        try:
+                            relative_path = file_path.relative_to(temp_dir)
+                            # Нормализуем путь (заменяем / на \)
+                            normalized_path = str(relative_path).replace('/', '\\')
+                            
+                            # Ищем соответствие в списке запрошенных файлов
+                            for original_filename in filenames:
+                                # Нормализуем оригинальное имя
+                                normalized_original = original_filename.replace('/', '\\')
+                                if normalized_path == normalized_original:
+                                    with open(file_path, 'rb') as f:
+                                        extracted_files[original_filename] = f.read()
+                                    break
+                        except Exception as e:
+                            logger.warning(f"Ошибка чтения файла {file_path}: {e}")
+            else:
+                logger.error(f"7zip вернул код ошибки {result.returncode}")
+        
+        except SafeSubprocessError as e:
+            logger.error(f"Ошибка батчевого извлечения: {e}")
+        except Exception as e:
+            logger.error(f"Неожиданная ошибка при батчевом извлечении: {e}")
+        finally:
+            safe_remove_dir(temp_dir)
+        
+        return extracted_files
     
     def get_supported_files(self, directory: str) -> List[str]:
         """Возвращает список поддерживаемых файлов в директории."""
