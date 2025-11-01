@@ -22,19 +22,15 @@ Write-Host "Activating virtual environment..." -ForegroundColor Yellow
 Write-Host "Активируем виртуальное окружение..." -ForegroundColor Yellow
 & ".\venv\Scripts\Activate.ps1"
 
-# Set environment variables
-# Устанавливаем переменные окружения
+# Set PYTHONPATH
+# Устанавливаем PYTHONPATH
 $env:PYTHONPATH = (Get-Location).Path
-$env:ELASTICSEARCH_HOST = "localhost"
-$env:ELASTICSEARCH_PORT = "9200"
-$env:LOG_LEVEL = "INFO"
 
-Write-Host "Environment variables set:" -ForegroundColor Cyan
-Write-Host "Переменные окружения установлены:" -ForegroundColor Cyan
+Write-Host "Environment variables:" -ForegroundColor Cyan
+Write-Host "Переменные окружения:" -ForegroundColor Cyan
 Write-Host "  PYTHONPATH=$env:PYTHONPATH" -ForegroundColor Gray
-Write-Host "  ELASTICSEARCH_HOST=$env:ELASTICSEARCH_HOST" -ForegroundColor Gray
-Write-Host "  ELASTICSEARCH_PORT=$env:ELASTICSEARCH_PORT" -ForegroundColor Gray
-Write-Host "  LOG_LEVEL=$env:LOG_LEVEL" -ForegroundColor Gray
+Write-Host "  Note: Other settings loaded from .env file" -ForegroundColor Green
+Write-Host "  Примечание: Остальные настройки загружаются из .env файла" -ForegroundColor Green
 
 # Start the server
 # Запускаем сервер
@@ -42,8 +38,13 @@ Write-Host "Starting MCP server on http://localhost:8000" -ForegroundColor Green
 Write-Host "Запускаем MCP сервер на http://localhost:8000" -ForegroundColor Green
 Write-Host "Press Ctrl+C to stop the server" -ForegroundColor Yellow
 Write-Host "Нажмите Ctrl+C для остановки сервера" -ForegroundColor Yellow
+Write-Host ""
+Write-Host "To force reindex, use: .\start_mcp_server.ps1 --reindex" -ForegroundColor Cyan
+Write-Host "Для принудительной переиндексации: .\start_mcp_server.ps1 --reindex" -ForegroundColor Cyan
+Write-Host ""
 
-python -m uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+# Передаём все аргументы скрипта в uvicorn
+python -m uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload @args
 
 Write-Host "Server stopped." -ForegroundColor Red
 Write-Host "Сервер остановлен." -ForegroundColor Red

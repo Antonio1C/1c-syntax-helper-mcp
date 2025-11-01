@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     """Основные настройки приложения."""
     
     # Elasticsearch настройки
-    elasticsearch_host: str = "192.168.0.12"
+    elasticsearch_host: str = "localhost"
     elasticsearch_port: str = "9200"
     elasticsearch_url: str = "http://localhost:9200"
     elasticsearch_index: str = "help1c_docs"
@@ -51,12 +51,15 @@ class Settings(BaseSettings):
     # Производительность
     max_concurrent_requests: str = "8"
     index_batch_size: str = "100"
-    reindex_on_startup: str = "true"
+    reindex_on_startup: str = "false"
     search_max_results: str = "50"
     search_timeout_seconds: str = "30"
     
     # Режим разработки
     debug: bool = False
+    
+    # Runtime параметры (устанавливаются программно)
+    force_reindex: bool = False
     
     model_config = ConfigDict(
         env_file=".env",
@@ -93,6 +96,14 @@ class Settings(BaseSettings):
             hbk_directory=self.hbk_directory,
             logs_directory=self.logs_directory
         )
+    
+    @property
+    def should_reindex_on_startup(self) -> bool:
+        """Проверить, нужна ли переиндексация при запуске."""
+        # Приоритет: force_reindex > reindex_on_startup
+        if self.force_reindex:
+            return True
+        return self.reindex_on_startup.lower() in ("true", "1", "yes")
 
 
 # Глобальный экземпляр настроек

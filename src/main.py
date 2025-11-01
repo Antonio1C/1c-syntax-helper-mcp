@@ -1,5 +1,7 @@
 ﻿"""Главное приложение MCP сервера синтаксис-помощника 1С."""
 
+import sys
+import argparse
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,6 +27,29 @@ from src.api.middleware.error_handler import (
 )
 
 logger = get_logger(__name__)
+
+
+def parse_arguments():
+    """Парсинг аргументов командной строки."""
+    parser = argparse.ArgumentParser(
+        description="1C Syntax Helper MCP Server"
+    )
+    parser.add_argument(
+        "--reindex",
+        action="store_true",
+        help="Принудительная переиндексация при запуске (игнорирует существующие данные)"
+    )
+    
+    # Парсим только известные аргументы, чтобы не конфликтовать с uvicorn
+    args, unknown = parser.parse_known_args()
+    return args
+
+
+# Обрабатываем аргументы командной строки
+args = parse_arguments()
+if args.reindex:
+    settings.force_reindex = True
+    logger.info("Включена принудительная переиндексация (--reindex)")
 
 
 @asynccontextmanager

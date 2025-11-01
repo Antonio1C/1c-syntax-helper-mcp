@@ -7,6 +7,7 @@ from src.core.elasticsearch import ElasticsearchClient
 from src.core.metrics import get_metrics_collector, get_system_monitor
 from src.core.dependency_injection import setup_dependencies
 from src.core.startup import auto_index_on_startup
+from src.infrastructure.background.indexing_manager import setup_indexing_manager, get_indexing_manager
 
 logger = get_logger(__name__)
 
@@ -26,6 +27,14 @@ async def startup(app: FastAPI):
     # Настройка dependency injection
     setup_dependencies()
     
+    # Инициализация менеджера фоновой индексации
+    indexing_manager = setup_indexing_manager(
+        shutdown_timeout=30,
+        progress_log_interval=1000
+    )
+    app.state.indexing_manager = indexing_manager
+    logger.info("Менеджер фоновой индексации инициализирован")
+    
     # Запуск мониторинга системы
     await monitor.start_monitoring(interval=60)
     
@@ -43,15 +52,17 @@ async def startup(app: FastAPI):
         # Сохраняем клиента в app.state
         app.state.es_client = es_client
         
-        # Проверяем наличие .hbk файла и запускаем автоиндексацию
+        # Проверяем наличие .hbk файла и запускаем фоновую автоиндексацию
         await auto_index_on_startup(es_client)
     
     await metrics.increment("startup.completed")
+    logger.info("✅ Приложение запущено (индексация в фоне)")
+
 
 
 async def shutdown(app: FastAPI):
     """
-    Shutdown logic для приложения.
+    Shutdown logic для приложения с graceful завершением индексации.
     
     Args:
         app: FastAPI application instance
@@ -61,6 +72,13 @@ async def shutdown(app: FastAPI):
     metrics = get_metrics_collector()
     monitor = get_system_monitor()
     
+    # Graceful shutdown для фоновой индексации
+    if hasattr(app.state, 'indexing_manager'):
+        manager = get_indexing_manager()
+        if manager.is_indexing():
+            logger.info("Обнаружена активная индексация, ожидание завершения...")
+            await manager.graceful_shutdown(timeout=30)
+    
     # Останавливаем мониторинг
     await monitor.stop_monitoring()
     
@@ -69,3 +87,4 @@ async def shutdown(app: FastAPI):
         await app.state.es_client.disconnect()
     
     await metrics.increment("shutdown.completed")
+    logger.info("✅ MCP сервер остановлен")

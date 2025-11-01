@@ -7,6 +7,7 @@ from src.core.elasticsearch import ElasticsearchClient
 from src.core.metrics import get_metrics_collector, get_system_monitor
 from src.core.rate_limiter import get_rate_limiter
 from src.core.logging import get_logger
+from src.infrastructure.background.indexing_manager import get_indexing_manager as _get_indexing_manager, BackgroundIndexingManager
 
 logger = get_logger(__name__)
 
@@ -61,3 +62,17 @@ def get_metrics():
 def get_limiter():
     """Dependency для получения RateLimiter."""
     return get_rate_limiter()
+
+
+# ============================================================================
+# Background Indexing Manager Dependency
+# ============================================================================
+
+def get_indexing_manager() -> BackgroundIndexingManager:
+    """
+    Dependency для получения менеджера фоновой индексации.
+    
+    Returns:
+        BackgroundIndexingManager: Singleton instance менеджера индексации
+    """
+    return _get_indexing_manager()

@@ -1,6 +1,6 @@
 """Индексатор документации в Elasticsearch."""
 
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Callable
 import asyncio
 from datetime import datetime
 
@@ -19,8 +19,21 @@ class ElasticsearchIndexer:
         self.batch_size = 100
         self.max_retries = 3
     
-    async def index_documentation(self, parsed_hbk: ParsedHBK) -> bool:
-        """Индексирует документацию из ParsedHBK в Elasticsearch."""
+    async def index_documentation(
+        self, 
+        parsed_hbk: ParsedHBK,
+        progress_callback: Optional[Callable[[int, int], None]] = None
+    ) -> bool:
+        """
+        Индексирует документацию из ParsedHBK в Elasticsearch.
+        
+        Args:
+            parsed_hbk: Распарсенные данные HBK
+            progress_callback: Callback для отчёта о прогрессе (indexed, total)
+        
+        Returns:
+            bool: True если успешно, False иначе
+        """
         if not await self.es_client.is_connected():
             logger.error("Нет подключения к Elasticsearch")
             return False
@@ -31,7 +44,7 @@ class ElasticsearchIndexer:
                 logger.info("Создаем индекс Elasticsearch")
                 await self.es_client.create_index()
             
-            # Индексируем документы батчами
+            # Индексируем документы батчами с отчётом о прогрессе
             total_docs = len(parsed_hbk.documentation)
             indexed_count = 0
             
@@ -41,6 +54,10 @@ class ElasticsearchIndexer:
                 success = await self._index_batch(batch)
                 if success:
                     indexed_count += len(batch)
+                    
+                    # Вызываем callback для отчёта о прогрессе
+                    if progress_callback:
+                        progress_callback(indexed_count, total_docs)
                 else:
                     logger.error(f"Ошибка индексации батча {i}-{i+len(batch)}")
             
@@ -122,8 +139,21 @@ class ElasticsearchIndexer:
         
         return es_doc
     
-    async def reindex_all(self, parsed_hbk: ParsedHBK) -> bool:
-        """Переиндексирует всю документацию (удаляет старый индекс и создает новый)."""
+    async def reindex_all(
+        self, 
+        parsed_hbk: ParsedHBK,
+        progress_callback: Optional[Callable[[int, int], None]] = None
+    ) -> bool:
+        """
+        Переиндексирует всю документацию (удаляет старый индекс и создает новый).
+        
+        Args:
+            parsed_hbk: Распарсенные данные HBK
+            progress_callback: Callback для отчёта о прогрессе (indexed, total)
+        
+        Returns:
+            bool: True если успешно, False иначе
+        """
         try:            
             # Удаляем старый индекс если существует
             if await self.es_client.index_exists():
@@ -133,8 +163,8 @@ class ElasticsearchIndexer:
             # Создаем новый индекс
             await self.es_client.create_index()
             
-            # Индексируем документы
-            return await self.index_documentation(parsed_hbk)
+            # Индексируем документы с прогрессом
+            return await self.index_documentation(parsed_hbk, progress_callback)
             
         except Exception as e:
             logger.error(f"Ошибка переиндексации: {e}")

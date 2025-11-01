@@ -1,60 +1,83 @@
 """Startup logic для приложения."""
 
+import asyncio
 from pathlib import Path
 
 from src.core.config import settings
 from src.core.logging import get_logger
 from src.core.elasticsearch import ElasticsearchClient
-from src.parsers.hbk_parser import HBKParser
-from src.parsers.indexer import indexer
+from src.infrastructure.background.indexing_manager import get_indexing_manager
 
 logger = get_logger(__name__)
 
 
 async def auto_index_on_startup(es_client: ElasticsearchClient):
     """
-    Автоматическая индексация при запуске, если найден .hbk файл.
+    Автоматическая индексация в фоновом режиме при запуске.
+    
+    Проверяет наличие .hbk файла и запускает фоновую индексацию.
+    Поведение зависит от настроек:
+    - force_reindex=True или reindex_on_startup=true: всегда индексирует
+    - Иначе: индексирует только если индекс пуст или не существует
     
     Args:
         es_client: Подключённый клиент Elasticsearch
     """
     try:
-        # Ищем .hbk файлы в директории данных
-        hbk_dir = Path(settings.data.hbk_directory)
-        if not hbk_dir.exists():
-            logger.warning(f"Директория .hbk файлов не найдена: {hbk_dir}")
+        # Определяем путь к единственному .hbk файлу
+        hbk_file = Path(settings.data.hbk_directory) / "shcntx_ru.hbk"
+        
+        if not hbk_file.exists():
+            logger.warning(f"Файл .hbk не найден: {hbk_file}")
             return
         
-        hbk_files = list(hbk_dir.glob("*.hbk"))
-        if not hbk_files:
-            logger.info(f"Файлы .hbk не найдены в {hbk_dir}. Индексация будет выполнена при загрузке файла.")
-            return
+        # Проверяем, нужна ли принудительная переиндексация
+        force_reindex = settings.should_reindex_on_startup
         
-        # Проверяем, нужна ли индексация
-        index_exists = await es_client.index_exists()
-        docs_count = await es_client.get_documents_count() if index_exists else 0
-        
-        if index_exists and docs_count and docs_count > 0:
-            logger.info(f"Индекс уже существует с {docs_count} документами. Пропускаем автоиндексацию.")
-            return
-        
-        # Запускаем индексацию первого найденного файла
-        hbk_file = hbk_files[0]
-        logger.info(f"Запускаем автоматическую индексацию файла: {hbk_file}")
-        
-        success = await index_hbk_file(str(hbk_file), es_client)
-        if success:
-            logger.info("Автоматическая индексация завершена успешно")
+        if not force_reindex:
+            # Быстрая проверка индекса
+            index_exists = await es_client.index_exists()
+            if index_exists:
+                docs_count = await es_client.get_documents_count()
+                if docs_count > 0:
+                    logger.info(f"Индекс уже существует с {docs_count} документами. Пропускаем автоиндексацию.")
+                    return
         else:
-            logger.error("Ошибка автоматической индексации")
-            
+            logger.info("Принудительная переиндексация при запуске (reindex_on_startup=true или --reindex)")
+        
+        # Запускаем фоновую индексацию с задержкой
+        logger.info(f"Запланирована фоновая индексация файла: {hbk_file}")
+        asyncio.create_task(_delayed_background_indexing(str(hbk_file), es_client))
+        
     except Exception as e:
-        logger.error(f"Ошибка при автоматической индексации: {e}")
+        logger.error(f"Ошибка при планировании автоиндексации: {e}")
+
+
+async def _delayed_background_indexing(file_path: str, es_client: ElasticsearchClient):
+    """
+    Отложенная фоновая индексация.
+    
+    Даёт приложению время на полный запуск перед началом индексации.
+    
+    Args:
+        file_path: Путь к .hbk файлу
+        es_client: Клиент Elasticsearch
+    """
+    # Даём приложению 5 секунд на полный запуск
+    await asyncio.sleep(5)
+    
+    logger.info("Начинаем фоновую индексацию...")
+    
+    try:
+        manager = get_indexing_manager()
+        await manager.start_indexing(file_path=file_path, es_client=es_client)
+    except Exception as e:
+        logger.error(f"Ошибка при запуске фоновой индексации: {e}")
 
 
 async def index_hbk_file(file_path: str, es_client: ElasticsearchClient) -> bool:
     """
-    Индексирует .hbk файл в Elasticsearch.
+    Индексирует .hbk файл в Elasticsearch (используется для ручной индексации через API).
     
     Args:
         file_path: Путь к .hbk файлу
@@ -64,7 +87,10 @@ async def index_hbk_file(file_path: str, es_client: ElasticsearchClient) -> bool
         bool: True если индексация успешна, False иначе
     """
     try:
-        logger.info(f"Начинаем индексацию файла: {file_path}")
+        from src.parsers.hbk_parser import HBKParser
+        from src.parsers.indexer import ElasticsearchIndexer
+        
+        logger.info(f"Начинаем синхронную индексацию файла: {file_path}")
         
         # Парсим .hbk файл
         parser = HBKParser()
@@ -81,6 +107,7 @@ async def index_hbk_file(file_path: str, es_client: ElasticsearchClient) -> bool
         logger.info(f"Найдено {len(parsed_hbk.documentation)} документов для индексации")
         
         # Индексируем в Elasticsearch
+        indexer = ElasticsearchIndexer()
         success = await indexer.reindex_all(parsed_hbk)
         
         if success:

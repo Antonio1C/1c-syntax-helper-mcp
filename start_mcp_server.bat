@@ -22,19 +22,15 @@ echo Activating virtual environment...
 echo Активируем виртуальное окружение...
 call venv\Scripts\activate.bat
 
-REM Set environment variables
-REM Устанавливаем переменные окружения
+REM Set PYTHONPATH
+REM Устанавливаем PYTHONPATH
 set PYTHONPATH=%CD%
-set ELASTICSEARCH_HOST=localhost
-set ELASTICSEARCH_PORT=9200
-set LOG_LEVEL=INFO
 
-echo Environment variables set:
-echo Переменные окружения установлены:
+echo Environment variables:
+echo Переменные окружения:
 echo   PYTHONPATH=%PYTHONPATH%
-echo   ELASTICSEARCH_HOST=%ELASTICSEARCH_HOST%
-echo   ELASTICSEARCH_PORT=%ELASTICSEARCH_PORT%
-echo   LOG_LEVEL=%LOG_LEVEL%
+echo   Note: Other settings loaded from .env file
+echo   Примечание: Остальные настройки загружаются из .env файла
 
 REM Start the server
 REM Запускаем сервер
@@ -42,8 +38,12 @@ echo Starting MCP server on http://localhost:8000
 echo Запускаем MCP сервер на http://localhost:8000
 echo Press Ctrl+C to stop the server
 echo Нажмите Ctrl+C для остановки сервера
+echo.
+echo To force reindex, use: start_mcp_server.bat --reindex
+echo Для принудительной переиндексации: start_mcp_server.bat --reindex
+echo.
 
-python -m uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
+python -m uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload %*
 
 echo Server stopped.
 echo Сервер остановлен.

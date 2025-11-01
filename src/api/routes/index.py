@@ -7,7 +7,8 @@ from src.core.config import settings
 from src.core.elasticsearch import ElasticsearchClient
 from src.core.logging import get_logger
 from src.core.startup import index_hbk_file
-from src.api.dependencies import get_elasticsearch_client
+from src.api.dependencies import get_elasticsearch_client, get_indexing_manager
+from src.infrastructure.background.indexing_manager import BackgroundIndexingManager
 
 router = APIRouter(prefix="/index", tags=["index"])
 logger = get_logger(__name__)
@@ -15,18 +16,35 @@ logger = get_logger(__name__)
 
 @router.get("/status")
 async def index_status(
-    es_client: ElasticsearchClient = Depends(get_elasticsearch_client)
+    es_client: ElasticsearchClient = Depends(get_elasticsearch_client),
+    indexing_manager: BackgroundIndexingManager = Depends(get_indexing_manager)
 ):
-    """Статус индексации."""
+    """
+    Получить статус индекса и фоновой индексации.
+    
+    Возвращает:
+    - Статус подключения к Elasticsearch
+    - Информацию о существовании индекса
+    - Количество документов в индексе
+    - Статус фоновой индексации (если активна)
+    """
+    # Информация об Elasticsearch индексе
     es_connected = await es_client.is_connected()
     index_exists = await es_client.index_exists() if es_connected else False
     docs_count = await es_client.get_documents_count() if index_exists else 0
+    
+    # Информация о фоновой индексации
+    progress = await indexing_manager.get_status()
     
     return {
         "elasticsearch_connected": es_connected,
         "index_exists": index_exists,
         "documents_count": docs_count,
-        "index_name": settings.elasticsearch.index_name
+        "index_name": settings.elasticsearch.index_name,
+        "indexing": {
+            "is_active": indexing_manager.is_indexing(),
+            **progress.to_dict()
+        }
     }
 
 

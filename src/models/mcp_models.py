@@ -114,4 +114,6 @@ class HealthResponse(BaseModel):
     elasticsearch: bool
     index_exists: bool
     documents_count: Optional[int] = None
+    indexing_status: Optional[str] = None
+    indexing_active: Optional[bool] = None
     version: str = "1.0.0"
