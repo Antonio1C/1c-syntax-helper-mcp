@@ -192,6 +192,9 @@ async def mcp_jsonrpc_endpoint(
         
         # Обрабатываем initialize запрос
         if method == "initialize":
+            # Только реально поддерживаемые capabilities.
+            # Ложные resources/roots/sampling заставляли Cursor звать
+            # resources/list и падать на HTTP 400 (transport_error).
             return JSONResponse(content={
                 "jsonrpc": "2.0",
                 "id": request_id,
@@ -200,9 +203,7 @@ async def mcp_jsonrpc_endpoint(
                     "capabilities": {
                         "tools": {},
                         "resources": {},
-                        "prompts": {},
-                        "roots": {"listChanged": False},
-                        "sampling": {}
+                        "prompts": {}
                     },
                     "serverInfo": {
                         "name": "1c-syntax-helper-mcp",
@@ -239,6 +240,26 @@ async def mcp_jsonrpc_endpoint(
                 }
             })
         
+        # Обрабатываем resources/list (пустой список — Cursor требует при resources capability)
+        elif method == "resources/list":
+            return JSONResponse(content={
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "result": {
+                    "resources": []
+                }
+            })
+
+        # Обрабатываем resources/templates/list
+        elif method == "resources/templates/list":
+            return JSONResponse(content={
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "result": {
+                    "resourceTemplates": []
+                }
+            })
+        
         # Обрабатываем prompts/list запрос
         elif method == "prompts/list":
             return JSONResponse(content={
@@ -247,6 +268,14 @@ async def mcp_jsonrpc_endpoint(
                 "result": {
                     "prompts": []
                 }
+            })
+
+        # MCP keepalive (Cursor шлёт ping по Streamable HTTP)
+        elif method == "ping":
+            return JSONResponse(content={
+                "jsonrpc": "2.0",
+                "id": request_id,
+                "result": {}
             })
         
         # Обрабатываем notifications/initialized (без ответа)
@@ -274,8 +303,9 @@ async def mcp_jsonrpc_endpoint(
             })
         
         else:
+            # JSON-RPC method-not-found должен идти с HTTP 200:
+            # Cursor Streamable HTTP трактует HTTP 4xx как fatal transport_error.
             return JSONResponse(
-                status_code=400,
                 content={
                     "jsonrpc": "2.0",
                     "id": request_id,
