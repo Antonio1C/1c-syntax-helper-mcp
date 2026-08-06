@@ -130,6 +130,7 @@ class ElasticsearchClient:
                         }
                     },
                     "return_type": {"type": "keyword"},
+                    "availability": {"type": "text"},
                     "version_from": {"type": "keyword"},
                     "examples": {"type": "text", "analyzer": "russian"},
                     "source_file": {"type": "keyword"},

@@ -59,6 +59,7 @@ class Documentation(BaseModel):
     parameters: List[Parameter] = []
     return_type: Optional[str] = None
     usage: Optional[str] = None  # Для свойств - "Чтение и запись", "Только чтение" и т.д.
+    availability: Optional[str] = None  # Контексты выполнения из раздела "Доступность"
     version_from: Optional[str] = None
     examples: List[str] = []
     source_file: str = ""
