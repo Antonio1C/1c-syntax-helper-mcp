@@ -23,6 +23,14 @@ class HTMLParser:
             
             # Парсим HTML
             soup = BeautifulSoup(html_content, 'html.parser')
+
+            # catalogNNN.html — навигационные страницы разделов HBK, а не
+            # документация объектов. Их заголовки могут совпадать с именами
+            # реальных объектов и перезаписывать их в Elasticsearch.
+            file_name = file_path.replace('\\', '/').rsplit('/', 1)[-1]
+            if re.fullmatch(r'catalog\d+\.html', file_name, flags=re.IGNORECASE):
+                logger.debug(f"Пропущена навигационная страница HBK: {file_path}")
+                return None
             
             # Определяем тип документации из пути файла
             doc_type, object_name, item_name = self._parse_file_path(file_path)
@@ -47,6 +55,7 @@ class HTMLParser:
             
             # Извлекаем основную информацию
             self._extract_title_and_description(soup, doc)
+            self._extract_availability(soup, doc)
             
             # Для всех типов кроме глобальных переопределяем object из заголовка
             if doc.type not in (DocumentType.GLOBAL_FUNCTION, DocumentType.GLOBAL_PROCEDURE, DocumentType.GLOBAL_EVENT):
@@ -266,14 +275,35 @@ class HTMLParser:
         from bs4 import BeautifulSoup as BS
         clean_usage = BS(usage_content, 'html.parser').get_text()
         doc.usage = clean_usage.strip()
+
+    def _extract_availability(self, soup: BeautifulSoup, doc: Documentation):
+        """Извлекает исходный текст раздела "Доступность"."""
+        availability_content = self._get_content_after_chapter(
+            soup,
+            ['доступность'],
+            exact=True
+        )
+        if not availability_content:
+            return
+
+        from bs4 import BeautifulSoup as BS
+        clean_availability = BS(availability_content, 'html.parser').get_text(" ", strip=True)
+        if clean_availability:
+            doc.availability = clean_availability
     
-    def _get_content_after_chapter(self, soup: BeautifulSoup, chapter_keywords: list) -> str:
+    def _get_content_after_chapter(
+        self,
+        soup: BeautifulSoup,
+        chapter_keywords: list,
+        exact: bool = False
+    ) -> str:
         """
         Универсальный метод для получения HTML контента после заголовка V8SH_chapter.
         
         Args:
             soup: Объект BeautifulSoup
             chapter_keywords: Список ключевых слов для поиска заголовка (в нижнем регистре)
+            exact: Требовать точного совпадения текста заголовка без завершающего двоеточия
             
         Returns:
             HTML строка с контентом после найденного заголовка до следующего заголовка
@@ -282,7 +312,12 @@ class HTMLParser:
         
         for header in chapter_headers:
             header_text = header.get_text(strip=True).lower()
-            if any(keyword in header_text for keyword in chapter_keywords):
+            normalized_header = header_text.rstrip(':').strip()
+            header_matches = any(
+                normalized_header == keyword if exact else keyword in header_text
+                for keyword in chapter_keywords
+            )
+            if header_matches:
                 parent = header.parent
                 if parent:
                     header_html = str(header)

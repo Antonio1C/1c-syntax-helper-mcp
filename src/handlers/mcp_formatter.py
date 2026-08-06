@@ -67,6 +67,9 @@ class MCPResponseFormatter:
         
         if result.get('description'):
             text += f"📝 **Описание:**\n   {result['description']}\n\n"
+
+        if result.get('availability'):
+            text += f"🌐 **Доступность:** {result['availability']}\n\n"
         
         if result.get('syntax_ru'):
             text += f"🔤 **Синтаксис:**\n   `{result['syntax_ru']}`\n\n"
@@ -108,6 +111,9 @@ class MCPResponseFormatter:
             desc = description.split('.')[0] + '.' if '.' in description else description
             desc = desc[:100] + "..." if len(desc) > 100 else desc
             text += f"└ {desc}"
+
+        if result.get('availability'):
+            text += f"\n🌐 Доступность: {result['availability']}"
         
         return text
     
@@ -177,6 +183,9 @@ class MCPResponseFormatter:
             desc = description.split('.')[0] + '.' if '.' in description else description
             desc = desc[:100] + "..." if len(desc) > 100 else desc
             text += f"└ {desc}"
+
+        if result.get('availability'):
+            text += f"\n🌐 Доступность: {result['availability']}"
         
         return text
 

@@ -131,6 +131,7 @@ class ElasticsearchIndexer:
                 for param in doc.parameters
             ],
             "return_type": doc.return_type,
+            "availability": doc.availability,
             "version_from": doc.version_from,
             "examples": doc.examples,
             "source_file": doc.source_file,
