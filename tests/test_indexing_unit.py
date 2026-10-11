@@ -3,6 +3,9 @@
 import pytest
 from unittest.mock import AsyncMock, Mock, patch
 
+from src.core.elasticsearch import ElasticsearchClient
+from src.parsers.indexer import ElasticsearchIndexer
+
 
 @pytest.mark.unit
 @pytest.mark.indexer
@@ -95,34 +98,43 @@ async def test_elasticsearch_bulk_operations():
 def test_prepare_document_for_indexing(mock_parsed_hbk):
     """Тест подготовки документа для индексации."""
     doc = mock_parsed_hbk.documentation[0]
-    
-    # Эмулируем подготовку для индексации
-    prepared = {
-        'id': doc.id,
-        'type': str(doc.type),
-        'name': doc.name,
-        'object': doc.object,
-        'syntax_ru': doc.syntax_ru,
-        'description': doc.description,
-        'parameters': [
-            {
-                'name': p.name,
-                'type': p.type,
-                'description': p.description,
-                'required': p.required
-            }
-            for p in (doc.parameters or [])
-        ],
-        'full_path': doc.full_path
-    }
-    
-    assert prepared['id'] is not None
-    assert prepared['name'] is not None
+    prepared = ElasticsearchIndexer(Mock())._prepare_document(doc)
+
+    assert prepared['id'] == doc.id
+    assert prepared['name'] == doc.name
+    assert prepared['name_ru'] == doc.name_ru
+    assert prepared['name_en'] == doc.name_en
     
     # Проверяем что параметры корректно сериализованы
     if doc.parameters:
         assert len(prepared['parameters']) == len(doc.parameters)
         assert all('name' in p for p in prepared['parameters'])
+
+
+@pytest.mark.unit
+@pytest.mark.indexer
+@pytest.mark.asyncio
+async def test_elasticsearch_mapping_contains_normalized_name_fields():
+    client = ElasticsearchClient()
+    indices = Mock()
+    indices.create = AsyncMock()
+    client._client = Mock(indices=indices)
+
+    assert await client.create_index() is True
+
+    index_config = indices.create.await_args.kwargs["body"]
+    analysis = index_config["settings"]["analysis"]
+    properties = index_config["mappings"]["properties"]
+
+    assert analysis["normalizer"]["exact_name_normalizer"] == {
+        "type": "custom",
+        "filter": ["lowercase"]
+    }
+    for field_name in ("name_ru", "name_en"):
+        assert properties[field_name]["fields"]["keyword"] == {
+            "type": "keyword",
+            "normalizer": "exact_name_normalizer"
+        }
 
 
 @pytest.mark.unit

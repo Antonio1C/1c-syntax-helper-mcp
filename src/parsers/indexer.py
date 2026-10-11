@@ -117,6 +117,8 @@ class ElasticsearchIndexer:
             "id": doc.id,
             "type": doc.type.value,
             "name": doc.name,
+            "name_ru": doc.name_ru,
+            "name_en": doc.name_en,
             "object": doc.object,
             "syntax_ru": doc.syntax_ru,
             "syntax_en": doc.syntax_en,

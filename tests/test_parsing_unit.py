@@ -2,7 +2,66 @@
 
 import pytest
 from pathlib import Path
-from src.models.doc_models import DocumentType
+from bs4 import BeautifulSoup
+
+from src.models.doc_models import Documentation, DocumentType
+from src.parsers.html_parser import HTMLParser
+
+
+def _extract_names(title: str, document_type: DocumentType) -> Documentation:
+    soup = BeautifulSoup(
+        f'<h1 class="V8SH_pagetitle">{title}</h1>',
+        'html.parser'
+    )
+    document = Documentation(id="test", type=document_type, name="initial")
+    HTMLParser()._extract_title_and_description(soup, document)
+    return document
+
+
+@pytest.mark.unit
+@pytest.mark.parser
+def test_extracts_global_function_names():
+    document = _extract_names("ПоместитьФайл   (PutFile).", DocumentType.GLOBAL_FUNCTION)
+
+    assert document.name_ru == "ПоместитьФайл"
+    assert document.name_en == "PutFile"
+    assert document.name == "ПоместитьФайл (PutFile)"
+
+
+@pytest.mark.unit
+@pytest.mark.parser
+def test_extracts_object_method_names():
+    document = _extract_names(
+        "ТаблицаЗначений.Количество (ValueTable.Count)",
+        DocumentType.OBJECT_FUNCTION
+    )
+
+    assert document.name_ru == "Количество"
+    assert document.name_en == "Count"
+    assert document.name == "Количество (Count)"
+
+
+@pytest.mark.unit
+@pytest.mark.parser
+def test_extracts_object_names():
+    document = _extract_names(
+        "ТипДанных.ИмяОбъекта (DataType.ObjectName)",
+        DocumentType.OBJECT
+    )
+
+    assert document.name_ru == "ИмяОбъекта"
+    assert document.name_en == "ObjectName"
+    assert document.name == "ИмяОбъекта (ObjectName)"
+
+
+@pytest.mark.unit
+@pytest.mark.parser
+def test_extracts_name_without_english_translation():
+    document = _extract_names("Объект.РусскоеИмя...", DocumentType.OBJECT_PROPERTY)
+
+    assert document.name_ru == "РусскоеИмя"
+    assert document.name_en == ""
+    assert document.name == "РусскоеИмя"
 
 
 @pytest.mark.unit

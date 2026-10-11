@@ -1,11 +1,13 @@
 """Построитель запросов для Elasticsearch."""
 
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 
 class QueryBuilder:
     """Построитель Elasticsearch запросов для поиска по документации 1С."""
-    
+
+    GLOBAL_TYPES = ["global_function", "global_procedure", "global_event"]
+
     def build_search_query(
         self,
         query: str,
@@ -14,7 +16,7 @@ class QueryBuilder:
     ) -> Dict[str, Any]:
         """
         Строит поисковый запрос.
-        
+
         Args:
             query: Поисковый запрос
             limit: Максимальное количество результатов
@@ -28,31 +30,89 @@ class QueryBuilder:
             search_type = self._detect_search_type(query)
         
         if search_type == "exact":
-            return self._build_exact_search(query, limit)
+            return self.build_phrase_query(query, limit)
         elif search_type == "fuzzy":
-            return self._build_fuzzy_search(query, limit)
+            return self.build_fuzzy_query(query, limit)
         elif search_type == "semantic":
-            return self._build_semantic_search(query, limit)
+            return self.build_semantic_query(query, limit)
         else:
-            return self._build_multi_match_search(query, limit)
+            return self.build_multi_match_query(query, limit)
     
-    def build_exact_query(self, function_name: str) -> Dict[str, Any]:
-        """Строит точный запрос по имени функции."""
-        return {
+    def build_strict_exact_query(self, element_name: str, object_name: Optional[str] = None) -> Dict[str, Any]:
+        """Строит строго точный запрос по имени элемента.
+        
+        Ищет точное совпадение в полях name_ru.keyword или name_en.keyword.
+        """
+        normalized_name = element_name.lower()
+        name_query = {
+            "bool": {
+                "should": [
+                    {"term": {"name_ru.keyword": {"value": normalized_name, "boost": 10.0}}},
+                    {"term": {"name_en.keyword": {"value": normalized_name, "boost": 10.0}}}
+                ],
+                "minimum_should_match": 1
+            }
+        }
+        bool_query = {
+            "must": [name_query],
+            "should": [
+                {"terms": {"type": self.GLOBAL_TYPES, "boost": 2.0}}
+            ]
+        }
+
+        query_structure = {
+            "query": {
+                "bool": bool_query
+            },
+            "size": 1
+        }
+        
+        # Добавляем фильтр по объекту если указан
+        if object_name:
+            bool_query["filter"] = [{"term": {"object": object_name}}]
+        
+        return query_structure
+    
+    def build_exact_query(self, element_name: str, object_name: Optional[str] = None, limit: int = 5) -> Dict[str, Any]:
+        """Строит fuzzy запрос по имени элемента с поддержкой фильтра по объекту."""
+        normalized_name = element_name.lower()
+        query_structure = {
             "query": {
                 "bool": {
+                    "must": [
+                        {
+                            "bool": {
+                                "should": [
+                                    {"term": {"name_ru.keyword": {"value": normalized_name, "boost": 10.0}}},
+                                    {"term": {"name_en.keyword": {"value": normalized_name, "boost": 10.0}}},
+                                    {"term": {"name.keyword": {"value": element_name, "boost": 5.0}}},
+                                    {"match": {"name_ru": {"query": element_name, "boost": 3.0}}},
+                                    {"match": {"name_en": {"query": element_name, "boost": 3.0}}},
+                                    {"wildcard": {"name_ru.keyword": {"value": f"*{normalized_name}*", "boost": 2.0}}},
+                                    {"wildcard": {"name_en.keyword": {"value": f"*{normalized_name}*", "boost": 2.0}}}
+                                ],
+                                "minimum_should_match": 1
+                            }
+                        }
+                    ],
                     "should": [
-                        {"term": {"name.keyword": {"value": function_name, "boost": 3.0}}},
-                        {"term": {"full_path": {"value": function_name, "boost": 2.0}}},
-                        {"match_phrase": {"name": {"query": function_name, "boost": 1.5}}}
+                        {"terms": {"type": self.GLOBAL_TYPES, "boost": 2.0}}
                     ]
                 }
             },
-            "size": 5,
+            "size": limit,
             "sort": [
                 {"_score": {"order": "desc"}}
             ]
         }
+        
+        # Добавляем фильтр по объекту если указан
+        if object_name:
+            query_structure["query"]["bool"]["filter"] = [
+                {"term": {"object": object_name}}
+            ]
+        
+        return query_structure
     
     def build_object_query(self, object_name: str, limit: int = 50) -> Dict[str, Any]:
         """Строит запрос для поиска всех элементов объекта."""
@@ -90,8 +150,8 @@ class QueryBuilder:
         # По умолчанию - обычный поиск
         return "multi_match"
     
-    def _build_exact_search(self, query: str, limit: int) -> Dict[str, Any]:
-        """Строит точный поиск."""
+    def build_phrase_query(self, query: str, limit: int = 10) -> Dict[str, Any]:
+        """Строит точный поиск по фразе."""
         return {
             "query": {
                 "bool": {
@@ -110,7 +170,7 @@ class QueryBuilder:
             ]
         }
     
-    def _build_multi_match_search(self, query: str, limit: int) -> Dict[str, Any]:
+    def build_multi_match_query(self, query: str, limit: int = 10) -> Dict[str, Any]:
         """Строит обычный multi-match поиск."""
         return {
             "query": {
@@ -143,7 +203,7 @@ class QueryBuilder:
             ]
         }
     
-    def _build_fuzzy_search(self, query: str, limit: int) -> Dict[str, Any]:
+    def build_fuzzy_query(self, query: str, limit: int = 10) -> Dict[str, Any]:
         """Строит нечеткий поиск."""
         return {
             "query": {
@@ -178,7 +238,7 @@ class QueryBuilder:
             ]
         }
     
-    def _build_semantic_search(self, query: str, limit: int) -> Dict[str, Any]:
+    def build_semantic_query(self, query: str, limit: int = 10) -> Dict[str, Any]:
         """Строит семантический поиск."""
         return {
             "query": {

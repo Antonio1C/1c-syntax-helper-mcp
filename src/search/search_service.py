@@ -20,6 +20,26 @@ class SearchService:
         self.query_builder = QueryBuilder()
         self.ranker = SearchRanker()
         self.formatter = SearchFormatter()
+
+    @staticmethod
+    def _first_document(response: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        hits = response.get("hits", {}).get("hits", [])
+        return hits[0].get("_source") if hits else None
+
+    @staticmethod
+    def _ambiguous_result(element_name: str) -> Dict[str, Any]:
+        return {
+            "ambiguous": True,
+            "element_name": element_name,
+            "message": (
+                f"Элемент '{element_name}' найден у объекта. "
+                "Укажите русское имя объекта в параметре object_name."
+            )
+        }
+
+    @staticmethod
+    def _is_global_document(document: Dict[str, Any]) -> bool:
+        return document.get("type") in QueryBuilder.GLOBAL_TYPES
     
     async def find_help_by_query(self, query: str, limit: int = 5) -> Dict[str, Any]:
         """Универсальный поиск справки по любому элементу 1С."""
@@ -95,40 +115,24 @@ class SearchService:
         object_name: Optional[str] = None, 
         include_examples: bool = True
     ) -> Optional[Dict[str, Any]]:
-        """Получить полную техническую информацию об элементе."""
+        """Получить полную техническую информацию об элементе.
+        
+        Использует двухэтапный поиск:
+        1. Строго точное совпадение по name.keyword
+        2. Fuzzy поиск если точное не найдено
+        """
         try:
-            # Формируем запрос для точного поиска
-            if object_name:
-                # Для поиска метода объекта используем гибкий поиск
-                elasticsearch_query = {
-                    "query": {
-                        "bool": {
-                            "must": [
-                                {"term": {"object": object_name}}
-                            ],
-                            "should": [
-                                # Точное совпадение по полному названию (высокий приоритет)
-                                {"term": {"name.keyword": {"value": element_name, "boost": 5.0}}},
-                                # Поиск по частям названия (русское и английское)
-                                {"match": {"name": {"query": element_name, "boost": 3.0}}},
-                                # Wildcard поиск для частичных совпадений
-                                {"wildcard": {"name.keyword": {"value": f"*{element_name}*", "boost": 2.0}}},
-                                # Фразовый поиск
-                                {"match_phrase": {"name": {"query": element_name, "boost": 2.5}}}
-                            ],
-                            "minimum_should_match": 1
-                        }
-                    },
-                    "size": 1
-                }
-            else:
-                # Для поиска без объекта используем точный запрос
-                elasticsearch_query = self.query_builder.build_exact_query(element_name)
+            # Этап 1: Строгий точный поиск
+            strict_query = self.query_builder.build_strict_exact_query(element_name, object_name)
+            response = await self.es_client.search(strict_query)
+            doc = self._first_document(response)
             
-            response = await self.es_client.search(elasticsearch_query)
-            
-            if response.get('hits', {}).get('total', {}).get('value', 0) > 0:
-                doc = response['hits']['hits'][0]['_source']
+            if doc:
+                if not object_name and not self._is_global_document(doc):
+                    logger.info(f"Для элемента '{element_name}' требуется имя объекта")
+                    return self._ambiguous_result(element_name)
+
+                logger.debug(f"Найден элемент '{element_name}' через строгий поиск")
                 
                 # Фильтруем примеры если не нужны
                 if not include_examples:
@@ -137,6 +141,27 @@ class SearchService:
                 
                 return doc
             
+            # Этап 2: Fuzzy fallback если точное совпадение не найдено
+            logger.info(f"Точное совпадение для '{element_name}' не найдено, используем fuzzy поиск")
+            fuzzy_query = self.query_builder.build_exact_query(element_name, object_name, limit=1)
+            response = await self.es_client.search(fuzzy_query)
+            doc = self._first_document(response)
+            
+            if doc:
+                if not object_name and not self._is_global_document(doc):
+                    logger.info(f"Для элемента '{element_name}' требуется имя объекта")
+                    return self._ambiguous_result(element_name)
+
+                logger.info(f"Найден элемент '{doc.get('name')}' через fuzzy поиск (запрос: '{element_name}')")
+                
+                # Фильтруем примеры если не нужны
+                if not include_examples:
+                    doc = doc.copy()
+                    doc.pop('examples', None)
+                
+                return doc
+            
+            logger.info(f"Элемент '{element_name}' не найден ни через точный, ни через fuzzy поиск")
             return None
             
         except Exception as e:
@@ -236,7 +261,7 @@ class SearchService:
         """Получить список элементов объекта с фильтрацией по типу."""
         try:
             # Базовый фильтр по объекту
-            query_filters = [{"term": {"object": object_name}}]
+            query_filters: List[Dict[str, Any]] = [{"term": {"object": object_name}}]
             
             # Добавляем фильтры по типу элементов
             if member_type == "methods":

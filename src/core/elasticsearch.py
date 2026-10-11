@@ -46,15 +46,20 @@ class ElasticsearchClient:
         """Подключается к Elasticsearch с retry механизмом."""
         logger.info("Attempting to connect to Elasticsearch...")
         
-        self._client = AsyncElasticsearch(
+        client = AsyncElasticsearch(
             hosts=[self._config.url],
             request_timeout=self._request_timeout,
             max_retries=0,  # Отключаем встроенный retry, используем декоратор
             retry_on_timeout=False
         )
-        
-        # Проверяем подключение
-        await self._client.info()
+
+        try:
+            await client.info()
+        except Exception:
+            await client.close()
+            raise
+
+        self._client = client
         logger.info("Successfully connected to Elasticsearch")
         return True
     
@@ -105,6 +110,12 @@ class ElasticsearchClient:
                             "filter": ["lowercase", "russian_stop", "russian_stemmer"]
                         }
                     },
+                    "normalizer": {
+                        "exact_name_normalizer": {
+                            "type": "custom",
+                            "filter": ["lowercase"]
+                        }
+                    },
                     "filter": {
                         "russian_stop": {"type": "stop", "stopwords": "_russian_"},
                         "russian_stemmer": {"type": "stemmer", "language": "russian"}
@@ -116,6 +127,26 @@ class ElasticsearchClient:
                     "id": {"type": "keyword"},
                     "type": {"type": "keyword"}, 
                     "name": {"type": "text", "analyzer": "russian", "fields": {"keyword": {"type": "keyword"}}},
+                    "name_ru": {
+                        "type": "text",
+                        "analyzer": "russian",
+                        "fields": {
+                            "keyword": {
+                                "type": "keyword",
+                                "normalizer": "exact_name_normalizer"
+                            }
+                        }
+                    },
+                    "name_en": {
+                        "type": "text",
+                        "analyzer": "standard",
+                        "fields": {
+                            "keyword": {
+                                "type": "keyword",
+                                "normalizer": "exact_name_normalizer"
+                            }
+                        }
+                    },
                     "object": {"type": "keyword"},
                     "syntax_ru": {"type": "text"},
                     "syntax_en": {"type": "text"},

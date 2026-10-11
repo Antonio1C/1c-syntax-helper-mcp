@@ -75,6 +75,13 @@ async def handle_get_syntax_info(request: GetSyntaxInfoRequest, es_client: Elast
             request.object_name, 
             request.include_examples
         )
+
+        if result and result.get("ambiguous"):
+            _log_mcp_success("get_syntax_info", count=0, ambiguous=True)
+            return mcp_formatter.create_success_response([{
+                "type": "text",
+                "text": result["message"]
+            }])
         
         if not result:
             element_context = f" объекта '{request.object_name}'" if request.object_name else ""
@@ -114,6 +121,13 @@ async def handle_get_quick_reference(request: GetQuickReferenceRequest, es_clien
             request.object_name, 
             include_examples=False
         )
+
+        if result and result.get("ambiguous"):
+            _log_mcp_success("get_quick_reference", count=0, ambiguous=True)
+            return mcp_formatter.create_success_response([{
+                "type": "text",
+                "text": result["message"]
+            }])
         
         if not result:
             _log_mcp_success("get_quick_reference", count=0)

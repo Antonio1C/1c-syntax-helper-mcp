@@ -51,7 +51,9 @@ class Documentation(BaseModel):
     """Базовая модель документации."""
     id: str = Field(..., description="Уникальный идентификатор")
     type: DocumentType
-    name: str
+    name: str  # Полное имя для отображения "ПоместитьФайл (PutFile)"
+    name_ru: str = ""  # Русское имя "ПоместитьФайл"
+    name_en: str = ""  # Английское имя "PutFile"
     object: Optional[str] = None  # Для методов/свойств/событий объектов
     syntax_ru: str = ""
     syntax_en: str = ""

@@ -63,6 +63,7 @@ def mock_parsed_hbk():
         Documentation(
             id="global_func_add",
             name="Добавить",
+            name_ru="Добавить",
             name_en="Add",
             type=DocumentType.GLOBAL_FUNCTION,
             object=None,
@@ -72,7 +73,6 @@ def mock_parsed_hbk():
             parameters=[
                 Parameter(
                     name="Значение",
-                    name_en="Value",
                     type="Произвольный",
                     description="Добавляемое значение",
                     required=True
@@ -87,6 +87,7 @@ def mock_parsed_hbk():
         Documentation(
             id="global_func_delete",
             name="Удалить",
+            name_ru="Удалить",
             name_en="Delete",
             type=DocumentType.GLOBAL_FUNCTION,
             object=None,
@@ -96,7 +97,6 @@ def mock_parsed_hbk():
             parameters=[
                 Parameter(
                     name="Индекс",
-                    name_en="Index",
                     type="Число",
                     description="Индекс удаляемого элемента",
                     required=True
@@ -111,10 +111,10 @@ def mock_parsed_hbk():
         Documentation(
             id="object_array_count",
             name="Количество",
+            name_ru="Количество",
             name_en="Count",
             type=DocumentType.OBJECT_PROPERTY,
             object="Массив",
-            object_en="Array",
             syntax_ru="Массив.Количество()",
             syntax_en="Array.Count()",
             description="Возвращает количество элементов в массиве",
@@ -128,10 +128,10 @@ def mock_parsed_hbk():
         Documentation(
             id="object_array_clear",
             name="Очистить",
+            name_ru="Очистить",
             name_en="Clear",
             type=DocumentType.OBJECT_PROCEDURE,
             object="Массив",
-            object_en="Array",
             syntax_ru="Массив.Очистить()",
             syntax_en="Array.Clear()",
             description="Очищает массив",
@@ -145,6 +145,7 @@ def mock_parsed_hbk():
         Documentation(
             id="event_before_write",
             name="ПередЗаписью",
+            name_ru="ПередЗаписью",
             name_en="BeforeWrite",
             type=DocumentType.GLOBAL_EVENT,
             object=None,
@@ -154,7 +155,6 @@ def mock_parsed_hbk():
             parameters=[
                 Parameter(
                     name="Отказ",
-                    name_en="Cancel",
                     type="Булево",
                     description="Признак отказа от записи",
                     required=True
@@ -187,9 +187,9 @@ def mock_parsed_hbk():
     # Создаём категории
     from src.models.doc_models import CategoryInfo
     categories = {
-        'Глобальный контекст': CategoryInfo(name='Глобальный контекст', name_en='Global Context', count=2),
-        'Массив': CategoryInfo(name='Массив', name_en='Array', count=2),
-        'События': CategoryInfo(name='События', name_en='Events', count=1)
+        'Глобальный контекст': CategoryInfo(name='Глобальный контекст'),
+        'Массив': CategoryInfo(name='Массив'),
+        'События': CategoryInfo(name='События')
     }
     
     return ParsedHBK(

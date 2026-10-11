@@ -243,9 +243,7 @@ class HTMLParser:
         if not title_text:
             return None
             
-        # Убираем английскую часть в скобках
-        if ' (' in title_text:
-            title_text = title_text.split(' (')[0]
+        title_text, _ = self._split_title_names(title_text)
         
         # Для объектов: "РегистрБухгалтерииМенеджер.<Имя регистра бухгалтерии>"
         # Для событий: "КритерийОтбораМенеджер.<Имя критерия>.ОбработкаПолученияФормы"
@@ -339,6 +337,19 @@ class HTMLParser:
         
         return ""
     
+    @staticmethod
+    def _split_title_names(title: str) -> tuple[str, str]:
+        """Разделяет полный заголовок на очищенные русскую и английскую части."""
+        normalized_title = title.strip().rstrip('.').strip()
+        match = re.fullmatch(r'(.*?)\s*\((.*?)\)\s*', normalized_title)
+
+        if not match:
+            return normalized_title.rstrip(').').strip(), ""
+
+        russian_name = match.group(1).strip().rstrip('.').strip()
+        english_name = match.group(2).strip().rstrip('.').strip()
+        return russian_name, english_name
+
     def _extract_title_and_description(self, soup: BeautifulSoup, doc: Documentation):
         """Извлекает заголовок и описание."""
         # Ищем заголовок в V8SH_pagetitle или V8SH_heading
@@ -346,37 +357,22 @@ class HTMLParser:
         if title_tag:
             title_text = title_tag.get_text(strip=True)
             if title_text:
+                russian_full, english_full = self._split_title_names(title_text)
+
                 if doc.type == DocumentType.OBJECT:
-                    # Для объектов берем часть после точки как имя
-                    # Убираем английскую часть в скобках
-                    if ' (' in title_text:
-                        title_text = title_text.split(' (')[0].strip()
-                    
-                    if '.' in title_text:
-                        # Извлекаем часть после точки как имя объекта
-                        doc.name = title_text.split('.', 1)[1].strip()
-                    else:
-                        doc.name = title_text
+                    russian_name = russian_full.split('.', 1)[-1]
+                    english_name = english_full.split('.', 1)[-1] if english_full else ""
                 else:
-                    # Для функций/методов/событий
-                    if '.' in title_text:
-                        # Разделяем русскую и английскую части
-                        russian_part = title_text.split(' (')[0] if ' (' in title_text else title_text
-                        english_part = title_text.split(' (')[1] if ' (' in title_text else ''
-                        
-                        # Берем последнюю часть русского названия
-                        russian_parts = russian_part.split('.')
-                        russian_name = russian_parts[-1] if len(russian_parts) > 1 else russian_part
-                        
-                        # Берем последнюю часть английского названия
-                        if english_part:
-                            english_parts = english_part.replace(')', '').split('.')
-                            english_name = english_parts[-1] if len(english_parts) > 1 else english_part.replace(')', '')
-                            doc.name = f"{russian_name} ({english_name})"
-                        else:
-                            doc.name = russian_name
-                    else:
-                        doc.name = title_text
+                    russian_name = russian_full.rsplit('.', 1)[-1]
+                    english_name = english_full.rsplit('.', 1)[-1] if english_full else ""
+
+                doc.name_ru = russian_name.strip()
+                doc.name_en = english_name.strip()
+                doc.name = (
+                    f"{doc.name_ru} ({doc.name_en})"
+                    if doc.name_en
+                    else doc.name_ru
+                )
 
         # Ищем описание в разделе "Описание:"
         desc_headers = soup.find_all('p', class_='V8SH_chapter')

@@ -25,12 +25,14 @@ def mock_es_client():
 
 
 @pytest.fixture
-def indexing_manager():
+async def indexing_manager():
     """Создание экземпляра менеджера индексации."""
-    return BackgroundIndexingManager(
+    manager = BackgroundIndexingManager(
         shutdown_timeout=5,
         progress_log_interval=100
     )
+    yield manager
+    await manager.graceful_shutdown(timeout=5)
 
 
 @pytest.mark.asyncio
