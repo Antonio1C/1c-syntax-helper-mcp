@@ -87,6 +87,7 @@ Thumbs.db
 
 # Project specific
 data/
+/tasks/
 
 # Exclude .hbk files from root directory
 *.hbk
