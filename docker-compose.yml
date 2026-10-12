@@ -29,9 +29,15 @@ services:
       - ./data/hbk:/app/data/hbk:ro
       - ./data/logs:/app/logs
     environment:
-      - ELASTICSEARCH_HOST=elasticsearch
-      - ELASTICSEARCH_PORT=9200
-      - LOG_LEVEL=INFO
+      - ELASTICSEARCH_HOST=${ELASTICSEARCH_HOST:-elasticsearch}
+      - ELASTICSEARCH_PORT=${ELASTICSEARCH_PORT:-9200}
+      - ELASTICSEARCH_INDEX=${ELASTICSEARCH_INDEX:-help1c_docs}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - MAX_CONCURRENT_REQUESTS=${MAX_CONCURRENT_REQUESTS:-8}
+      - INDEX_BATCH_SIZE=${INDEX_BATCH_SIZE:-100}
+      - REINDEX_ON_STARTUP=${REINDEX_ON_STARTUP:-false}
+      - SEARCH_MAX_RESULTS=${SEARCH_MAX_RESULTS:-50}
+      - SEARCH_TIMEOUT_SECONDS=${SEARCH_TIMEOUT_SECONDS:-30}
     restart: unless-stopped
     healthcheck:
       test: [ "CMD-SHELL", "curl -f http://localhost:8000/health || exit 1" ]

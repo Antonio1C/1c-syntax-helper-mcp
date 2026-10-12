@@ -81,22 +81,24 @@ cd 1c-syntax-helper-mcp
 ```
 
 ### Шаг 2: Подготовка .hbk файла
-1. Скопируйте файл документации 1С (например, `1c_documentation.hbk`) в папку:
+1. Скопируйте файл документации 1С `shcntx_ru.hbk` в папку:
    ```
-   data/hbk/1c_documentation.hbk
+   data/hbk/shcntx_ru.hbk
    ```
+   Для автоматической индексации при запуске имя файла должно быть именно `shcntx_ru.hbk`.
 
 2. Проверьте наличие файла:
    ```powershell
-   dir data\hbk\*.hbk
+   dir data\hbk\shcntx_ru.hbk
    ```
 
 ### Шаг 3: Настройка переменных окружения (опционально)
 Создайте файл `.env` в корне проекта:
 ```bash
 # Elasticsearch настройки
-ELASTICSEARCH_URL=http://elasticsearch:9200
-ELASTICSEARCH_INDEX=1c_docs
+ELASTICSEARCH_HOST=elasticsearch
+ELASTICSEARCH_PORT=9200
+ELASTICSEARCH_INDEX=help1c_docs
 
 # MCP сервер настройки  
 LOG_LEVEL=INFO
@@ -104,12 +106,13 @@ MAX_CONCURRENT_REQUESTS=8
 
 # Настройки индексации
 INDEX_BATCH_SIZE=100
-REINDEX_ON_STARTUP=true
+REINDEX_ON_STARTUP=false
 
 # Настройки поиска
 SEARCH_MAX_RESULTS=50
 SEARCH_TIMEOUT_SECONDS=30
 ```
+Docker Compose читает этот файл для подстановки настроек MCP-сервера. Без `.env` применяются значения по умолчанию из `docker-compose.yml`. Автоматическая индексация запускается, если индекс пуст; установите `REINDEX_ON_STARTUP=true`, только если нужна принудительная переиндексация при каждом запуске.
 
 ---
 
@@ -137,7 +140,7 @@ docker compose up elasticsearch -d
 docker compose logs elasticsearch
 
 # Проверка здоровья
-curl http://localhost:9200/_cluster/health
+curl.exe http://localhost:9200/_cluster/health
 ```
 
 #### 3. Запуск MCP сервера
@@ -159,53 +162,24 @@ docker compose logs mcp-server
 
 ## Настройка VS Code
 
-### Шаг 1: Установка расширения MCP
-1. Откройте VS Code
-2. Перейдите в Extensions (Ctrl+Shift+X)
-3. Найдите и установите **"Model Context Protocol"** расширение
-4. Перезапустите VS Code
-
-### Шаг 2: Настройка MCP клиента
-
-#### Способ 1: Через настройки VS Code
-1. Откройте настройки VS Code (Ctrl+,)
-2. Найдите "MCP" в поиске
-3. Добавьте новый сервер:
-   - **Name**: `1C Syntax Helper`
-   - **Command**: `curl`
-   - **Args**: 
-     ```json
-     [
-       "-X", "POST",
-       "-H", "Content-Type: application/json",
-       "-d", "@-",
-       "http://localhost:8000/mcp"
-     ]
-     ```
-
-#### Способ 2: Через конфигурационный файл
-Создайте файл `~/.config/mcp/settings.json`:
+### Шаг 1: Добавление MCP-сервера
+Создайте файл `.vscode/mcp.json` в корне проекта и добавьте конфигурацию:
 ```json
 {
   "servers": {
-    "1c-syntax-helper": {
-      "command": "curl",
-      "args": [
-        "-X", "POST",
-        "-H", "Content-Type: application/json", 
-        "-d", "@-",
-        "http://localhost:8000/mcp"
-      ]
+      "mcp-helper1c-http": {
+         "url": "http://localhost:8000/mcp",
+         "type": "http"
     }
-  }
+   },
+   "inputs": []
 }
 ```
 
-### Шаг 3: Активация MCP
-1. Откройте Command Palette (Ctrl+Shift+P)
-2. Выполните команду: `MCP: Connect to Server`
-3. Выберите `1C Syntax Helper` из списка
-4. Дождитесь подключения
+### Шаг 2: Запуск MCP-сервера в VS Code
+1. Убедитесь, что Docker-сервисы запущены: `docker compose up -d`.
+2. Откройте Command Palette (`Ctrl+Shift+P`) и выполните `MCP: List Servers`.
+3. Выберите `mcp-helper1c-http` и запустите сервер. При запросе подтвердите доверие к конфигурации.
 
 ---
 
@@ -214,26 +188,34 @@ docker compose logs mcp-server
 ### Шаг 1: Проверка API сервера
 ```powershell
 # Проверка здоровья
-curl http://localhost:8000/health
+curl.exe http://localhost:8000/health
 
 # Статус индексации
-curl http://localhost:8000/index/status
+curl.exe http://localhost:8000/index/status
 
 # Список доступных MCP инструментов
-curl http://localhost:8000/mcp/tools
+curl.exe http://localhost:8000/mcp/tools
 ```
 
 ### Шаг 2: Тестирование поиска через API
 ```powershell
-# Тест поиска
-curl -X POST http://localhost:8000/mcp `
-  -H "Content-Type: application/json" `
-  -d '{
-    "tool": "search_1c_syntax",
-    "arguments": {
-      "query": "СтрДлина"
+# JSON-RPC вызов инструмента find_1c_help
+$body = @{
+  jsonrpc = "2.0"
+  id = 1
+  method = "tools/call"
+  params = @{
+    name = "find_1c_help"
+    arguments = @{
+      query = "СтрДлина"
     }
-  }'
+  }
+} | ConvertTo-Json -Depth 5
+
+Invoke-RestMethod -Uri "http://localhost:8000/mcp" `
+  -Method Post `
+  -ContentType "application/json; charset=utf-8" `
+  -Body $body
 ```
 
 ### Шаг 3: Тестирование в VS Code
@@ -275,7 +257,7 @@ curl -X POST http://localhost:8000/mcp `
 **Решение:**
 1. Проверьте статус сервера:
    ```powershell
-   curl http://localhost:8000/health
+   curl.exe http://localhost:8000/health
    ```
 2. Проверьте логи:
    ```powershell
@@ -291,18 +273,19 @@ curl -X POST http://localhost:8000/mcp `
 1. Убедитесь, что .hbk файл находится в `data/hbk/`
 2. Запустите переиндексацию:
    ```powershell
-   curl -X POST http://localhost:8000/index/rebuild
+   curl.exe -X POST http://localhost:8000/index/rebuild
    ```
 3. Проверьте логи индексации:
    ```powershell
    docker compose logs mcp-server | findstr "индекс"
    ```
 
-### Проблема: VS Code не видит MCP расширение
+### Проблема: VS Code не видит MCP сервер
 **Решение:**
 1. Обновите VS Code до последней версии
-2. Переустановите MCP расширение
-3. Проверьте настройки брандмауэра (порт 8000 должен быть открыт)
+2. Проверьте файл `.vscode/mcp.json` и адрес `http://localhost:8000/mcp`
+3. Выполните `MCP: List Servers`; проверьте, что сервер запущен и конфигурация доверенная
+4. Проверьте настройки брандмауэра (порт 8000 должен быть открыт)
 
 ---
 
@@ -349,10 +332,10 @@ docker compose logs mcp-server
 docker compose exec mcp-server bash
 
 # Проверка индекса Elasticsearch
-curl "http://localhost:9200/1c_docs_index/_search?pretty&size=5"
+curl.exe "http://localhost:9200/help1c_docs/_search?pretty&size=5"
 
 # Статистика индекса
-curl "http://localhost:9200/1c_docs_index/_stats?pretty"
+curl.exe "http://localhost:9200/help1c_docs/_stats?pretty"
 ```
 
 ---
@@ -368,4 +351,4 @@ curl "http://localhost:9200/1c_docs_index/_stats?pretty"
 
 **Контакты:**
 - GitHub: https://github.com/Antonio1C/1c-syntax-helper-mcp
-- Документация: [docs/](docs/)
+- Документация: [docs/](../)

@@ -1,6 +1,6 @@
 # Инструкция по развертыванию
 
-Руководство по развертыванию MCP-сервера синтаксис-помощника 1С на Windows Server и Linux Server (ARM64).
+Руководство по развертыванию MCP-сервера синтаксис-помощника 1С на Windows 10/11 и Linux Server (AMD64 или ARM64).
 
 ## 📋 Содержание
 
@@ -16,14 +16,16 @@
 
 ## 🖥️ Требования
 
-### Windows Server
-- Windows Server 2019+
-- Docker Desktop
-- 4+ ГБ RAM (рекомендуется 8 ГБ)
+### Windows 10/11 (AMD64)
+- Версия Windows, поддерживаемая Docker Desktop
+- Docker Desktop с Linux containers и Docker Compose v2
+- 8+ ГБ RAM рекомендуется для Docker Desktop и Elasticsearch
 
-### Linux Server (ARM64)
-- Ubuntu 18.04+ / Debian 10+ / CentOS 8+ или другой Linux
-- Docker и Docker Compose установлены
+Docker Desktop официально не поддерживается на Windows Server. См. [системные требования Docker Desktop](https://docs.docker.com/desktop/setup/install/windows-install/#system-requirements).
+
+### Linux Server (AMD64 или ARM64)
+- Linux для целевой архитектуры
+- Docker Engine и Docker Compose v2
 - 4+ ГБ RAM (рекомендуется 8 ГБ)
 
 ### Проверка Docker:
@@ -48,8 +50,8 @@ docker compose version
 #### Для серверов AMD64 (Intel/AMD)
 
 ```powershell
-# 1. Перейти в директорию проекта
-cd d:\Anton\Development\python\mcp-servers\help1c
+# Перейти в корень клона проекта
+Set-Location "C:\path\to\help1c"
 
 # 2. Собрать Docker образ для AMD64
 docker build -t help1c-mcp:amd64 .
@@ -63,8 +65,8 @@ docker save help1c-mcp:amd64 -o help1c-mcp-amd64.tar
 #### Для серверов ARM64 (ARM, Raspberry Pi 4+, Apple Silicon)
 
 ```powershell
-# 1. Перейти в директорию проекта
-cd d:\Anton\Development\python\mcp-servers\help1c
+# Перейти в корень клона проекта
+Set-Location "C:\path\to\help1c"
 
 # 2. Собрать Docker образ для ARM64 (требует Docker Buildx)
 docker buildx build --platform linux/arm64 -t help1c-mcp:arm64 -o type=docker .
@@ -83,40 +85,39 @@ docker save help1c-mcp:arm64 -o help1c-mcp-arm64.tar
 
 ## 🚀 Развертывание на сервере
 
-### Развертывание на Windows Server (AMD64)
+### Развертывание на Windows 10/11 (AMD64)
 
-#### Шаг 1: Копирование файлов на сервер
+#### Шаг 1: Подготовка каталога развертывания
 
-Скопируйте на сервер в папку `C:\help1c-mcp\`:
+На компьютере Windows 10/11 с запущенным Docker Desktop создайте каталог `C:\help1c-mcp\` и скопируйте туда образ, Compose-файл и HBK. Если образ собирался на другом компьютере, сначала перенесите эти файлы на Windows-хост.
 
 ```
 C:\help1c-mcp\
 ├── help1c-mcp-amd64.tar     # Docker образ для AMD64
 ├── docker-compose.yml       # Конфигурация
 └── data\
-    └── hbk\
-        └── 1c_documentation.hbk  # Файл документации 1С
+  ├── hbk\
+  │   └── shcntx_ru.hbk        # Файл документации 1С
+  └── logs\                    # Каталог создаётся Compose при запуске
 ```
 
-**Через сетевую папку:**
 ```powershell
-# Создать директорию на сервере
-New-Item -Path "C:\help1c-mcp" -ItemType Directory
-New-Item -Path "C:\help1c-mcp\data\hbk" -ItemType Directory
+# Выполнять из корня клона проекта на Windows-хосте
+New-Item -Path "C:\help1c-mcp\data\hbk" -ItemType Directory -Force
+New-Item -Path "C:\help1c-mcp\data\logs" -ItemType Directory -Force
 
 # Скопировать файлы
-Copy-Item "d:\Anton\Development\python\mcp-servers\help1c\help1c-mcp-amd64.tar" "\\SERVER\C$\help1c-mcp\"
-Copy-Item "d:\Anton\Development\python\mcp-servers\help1c\docker-compose.yml" "\\SERVER\C$\help1c-mcp\"
-Copy-Item "d:\Anton\Development\python\mcp-servers\help1c\data\hbk\*.hbk" "\\SERVER\C$\help1c-mcp\data\hbk\"
+Copy-Item ".\help1c-mcp-amd64.tar" "C:\help1c-mcp\"
+Copy-Item ".\docker-compose.yml" "C:\help1c-mcp\"
+Copy-Item ".\data\hbk\shcntx_ru.hbk" "C:\help1c-mcp\data\hbk\"
 ```
 
-#### Шаг 2: Загрузка образа на сервере
+#### Шаг 2: Загрузка образа
 
-На сервере в PowerShell:
+Убедитесь, что Docker Desktop запущен в режиме Linux containers, затем выполните в PowerShell:
 
 ```powershell
-# Перейти в директорию
-cd C:\help1c-mcp
+Set-Location C:\help1c-mcp
 
 # Загрузить Docker образ
 docker load -i help1c-mcp-amd64.tar
@@ -125,7 +126,7 @@ docker load -i help1c-mcp-amd64.tar
 docker images | Select-String "help1c-mcp"
 ```
 
-#### Шаг 3: Обновить docker-compose.yml
+#### Шаг 3: Настройка Compose
 
 Замените в `C:\help1c-mcp\docker-compose.yml` строку `build: .` на `image: help1c-mcp:amd64`:
 
@@ -141,6 +142,8 @@ mcp-server:
 #### Шаг 4: Запуск сервиса
 
 ```powershell
+Set-Location C:\help1c-mcp
+
 # Запустить контейнеры
 docker compose up -d
 
@@ -150,86 +153,59 @@ docker compose ps
 
 ---
 
-### Развертывание на Linux Server (ARM64)
+### Развертывание на Linux Server (AMD64 или ARM64)
 
-#### Шаг 1: Подготовка на Windows машине
+#### Шаг 1: Определить архитектуру сервера
 
-На вашей Windows машине соберите образ для ARM64:
-
-```powershell
-cd d:\Anton\Development\python\mcp-servers\help1c
-
-# Создать builder если еще не создан
-docker buildx create --name multiarch --use
-
-# Собрать для ARM64 и сохранить как tar
-docker buildx build --platform linux/arm64 -t help1c-mcp:arm64 -o type=docker .
-
-# Экспортировать
-docker save help1c-mcp:arm64 -o help1c-mcp-arm64.tar
-```
-
-#### Шаг 2: Копирование файлов на Linux сервер
+На Linux-сервере выполните:
 
 ```bash
-# На Linux сервере создать директорию
-mkdir -p /opt/help1c-mcp/data/hbk
-
-# Скопировать файлы со своей машины на сервер (выполнить на Windows)
-scp help1c-mcp-arm64.tar user@server:/opt/help1c-mcp/
-scp docker-compose.yml user@server:/opt/help1c-mcp/
-scp data/hbk/*.hbk user@server:/opt/help1c-mcp/data/hbk/
-
-# Или через rsync для больших файлов
-rsync -avz help1c-mcp-arm64.tar user@server:/opt/help1c-mcp/
-rsync -avz docker-compose.yml user@server:/opt/help1c-mcp/
-rsync -avz data/hbk/ user@server:/opt/help1c-mcp/data/hbk/
+uname -m
 ```
 
-#### Шаг 3: Загрузка образа на Linux сервере
+`x86_64` означает AMD64, `aarch64` означает ARM64. Используйте образ, собранный для соответствующей архитектуры в разделе подготовки образа.
 
-На сервере выполните:
+#### Шаг 2: Копирование файлов на Linux-сервер
+
+На Windows-компьютере в PowerShell из корня клона проекта выберите соответствующий архив и скопируйте пакет:
+
+```powershell
+$ImageTar = "help1c-mcp-amd64.tar" # Для ARM64 замените на help1c-mcp-arm64.tar
+ssh user@server "mkdir -p /opt/help1c-mcp/data/hbk /opt/help1c-mcp/data/logs"
+scp ".\$ImageTar" user@server:/opt/help1c-mcp/
+scp .\docker-compose.yml user@server:/opt/help1c-mcp/
+scp .\data\hbk\shcntx_ru.hbk user@server:/opt/help1c-mcp/data/hbk/
+```
+
+#### Шаг 3: Загрузка образа на Linux-сервере
+
+Выберите команду, соответствующую архитектуре:
 
 ```bash
 cd /opt/help1c-mcp
-
-# Загрузить Docker образ
-docker load -i help1c-mcp-arm64.tar
-
-# Переименовать образ для удобства (опционально)
-docker tag help1c-mcp:arm64 help1c-mcp:latest
-
-# Проверить загруженный образ
+docker load -i help1c-mcp-amd64.tar  # AMD64
+# Для ARM64: docker load -i help1c-mcp-arm64.tar
 docker images | grep help1c-mcp
 ```
 
-#### Шаг 4: Обновить docker-compose.yml на Linux
+#### Шаг 4: Настройка Compose
 
-На сервере отредактируйте `docker-compose.yml`:
+Отредактируйте `/opt/help1c-mcp/docker-compose.yml`: замените `build: .` в сервисе `mcp-server` на соответствующий локальный образ:
 
-```bash
-# Отредактировать файл
-nano /opt/help1c-mcp/docker-compose.yml
-
-# Убедиться, что указано:
-# image: help1c-mcp:arm64  (или help1c-mcp:latest если переименовали)
-# volumes указывают на правильные пути для Linux:
-#   - ./data/hbk:/app/data/hbk
-#   - ./logs:/app/logs
+```yaml
+mcp-server:
+  image: help1c-mcp:amd64 # Для ARM64 используйте help1c-mcp:arm64
+  container_name: mcp-1c-helper
+  ports:
+    - "8000:8000"
+  # Остальные параметры и volumes оставьте как в docker-compose.yml проекта.
 ```
 
-#### Шаг 5: Запуск контейнеров на Linux
+#### Шаг 5: Запуск контейнеров
 
 ```bash
 cd /opt/help1c-mcp
-
-# Создать директорию логов если ее еще нет
-mkdir -p logs
-
-# Запустить контейнеры
 docker compose up -d
-
-# Проверить статус
 docker compose ps
 ```
 
@@ -258,7 +234,7 @@ Invoke-RestMethod http://localhost:8000/index/status
 ```json
 {
   "status": "healthy",
-  "elasticsearch": "connected",
+  "elasticsearch": true,
   "index_exists": true,
   "documents_count": 1234
 }
@@ -278,21 +254,17 @@ Invoke-RestMethod http://SERVER_IP:8000/health
 
 ### Настройка VS Code на клиентских машинах
 
-**Файл:** `%APPDATA%\Code\User\settings.json` (Windows) или `~/.config/Code/User/settings.json` (Linux)
+Создайте файл `.vscode/mcp.json` в папке проекта клиента (или добавьте сервер через MCP user configuration):
 
 ```json
 {
-  "mcp.servers": {
-    "1c-syntax-helper": {
-      "command": "curl",
-      "args": [
-        "-X", "POST",
-        "-H", "Content-Type: application/json",
-        "-d", "@-",
-        "http://SERVER_IP:8000/mcp"
-      ]
+  "servers": {
+    "mcp-helper1c-http": {
+      "url": "http://SERVER_IP:8000/mcp",
+      "type": "http"
     }
-  }
+  },
+  "inputs": []
 }
 ```
 
@@ -304,18 +276,18 @@ Invoke-RestMethod http://SERVER_IP:8000/health
 
 1. Откройте VS Code
 2. Нажмите `Ctrl+Shift+P`
-3. Введите "MCP" и выберите команду для проверки подключения
+3. Выполните `MCP: List Servers` и запустите `mcp-helper1c-http`
 4. В чате с AI попросите: "Найди справку по СтрДлина"
 
 ---
 
 ## 🔄 Обновление .hbk файла
 
-### На Windows Server
+### На Windows 10/11
 
 ```powershell
 # 1. Заменить файл на сервере
-Copy-Item "путь\к\новому\файлу.hbk" "C:\help1c-mcp\data\hbk\1c_documentation.hbk" -Force
+Copy-Item "путь\к\новому\файлу.hbk" "C:\help1c-mcp\data\hbk\shcntx_ru.hbk" -Force
 
 # 2. Запустить реиндексацию через API
 Invoke-RestMethod -Method Post -Uri "http://localhost:8000/index/rebuild"
@@ -332,7 +304,7 @@ Invoke-RestMethod -Uri "http://localhost:8000/index/status"
 ```bash
 # 1. Заменить файл на сервере
 cd /opt/help1c-mcp
-cp /путь/к/новому/файлу.hbk data/hbk/1c_documentation.hbk
+cp /путь/к/новому/файлу.hbk data/hbk/shcntx_ru.hbk
 
 # 2. Запустить реиндексацию через API
 curl -X POST http://localhost:8000/index/rebuild
@@ -346,12 +318,14 @@ curl http://localhost:8000/index/status
 
 ### Если нужно перезагрузить контейнер
 
+На Windows 10/11:
 ```powershell
-# Windows Server
-cd C:\help1c-mcp
+Set-Location C:\help1c-mcp
 docker compose restart mcp-server
+```
 
-# Или Linux Server
+На Linux Server:
+```bash
 cd /opt/help1c-mcp
 docker compose restart
 ```
@@ -363,8 +337,8 @@ docker compose restart
 Создайте файл `C:\help1c-mcp\update-hbk.ps1`:
 
 ```powershell
-$HbkSource = "\\server\share\1c_documentation.hbk"
-$HbkDest = "C:\help1c-mcp\data\hbk\1c_documentation.hbk"
+$HbkSource = "\\server\share\shcntx_ru.hbk"
+$HbkDest = "C:\help1c-mcp\data\hbk\shcntx_ru.hbk"
 
 Write-Host "Копирование файла..."
 Copy-Item $HbkSource $HbkDest -Force
@@ -376,14 +350,19 @@ Write-Host "Готово!"
 Invoke-RestMethod -Uri "http://localhost:8000/index/status"
 ```
 
-Запускать: `.\update-hbk.ps1Просмотр логов только MCP сервера
+Запускать: `.\update-hbk.ps1`
+
+## Управление сервисом
+
+```powershell
+# Просмотр логов только MCP сервера
 docker compose logs -f mcp-server
 
 # Просмотр статуса
 docker compose ps
 
-# Обновление образов (после изменения кода)
-docker compose up -d --build
+# После загрузки нового tar-образа обновить контейнер MCP
+docker compose up -d --force-recreate mcp-server
 
 # Полная очистка (с удалением данных)
 docker compose down -v
@@ -421,7 +400,7 @@ sudo systemctl start help1c-mcp
 sudo systemctl status help1c-mcp
 ```
 
-**Windows Server:**
+**Windows 10/11:**
 
 В `docker-compose.yml` уже установлен `restart: unless-stopped`, поэтому контейнеры автоматически запустятся при загрузке сервера (если Docker Desktop настроен на автозапуск).
 
@@ -431,7 +410,7 @@ sudo systemctl status help1c-mcp
 
 ### Контейнеры не запускаются
 
-**Windows Server:**
+**Windows 10/11:**
 ```powershell
 # Посмотреть логи
 docker compose logs
@@ -460,7 +439,7 @@ docker compose up -d
 
 ### Нет доступа с клиентских машин
 
-**Windows Server:**
+**Windows 10/11:**
 ```powershell
 # Открыть порт в firewall
 New-NetFirewallRule -DisplayName "Help1C MCP" -Direction Inbound -LocalPort 8000 -Protocol TCP -Action Allow
@@ -482,7 +461,7 @@ sudo firewall-cmd --reload
 
 ### Индексация не работает
 
-**Windows Server:**
+**Windows 10/11:**
 ```powershell
 # Проверить наличие файла
 dir C:\help1c-mcp\data\hbk\
@@ -508,7 +487,7 @@ curl -X POST http://localhost:8000/index/rebuild
 
 ### Проверить статус здоровья сервиса
 
-**Windows Server:**
+**Windows 10/11:**
 ```powershell
 Invoke-RestMethod http://localhost:8000/health
 ```
@@ -522,24 +501,24 @@ curl http://localhost:8000/health
 
 ## ✅ Чек-лист развертывания
 
-### Windows Server
+### Windows 10/11
 - [ ] Docker Desktop установлен и запущен
 - [ ] Образ `help1c-mcp:amd64` собран
 - [ ] Файл `help1c-mcp-amd64.tar` создан
 - [ ] Файлы скопированы в `C:\help1c-mcp\`
-- [ ] .hbk файл на месте: `C:\help1c-mcp\data\hbk\1c_documentation.hbk`
+- [ ] HBK-файл на месте: `C:\help1c-mcp\data\hbk\shcntx_ru.hbk`
 - [ ] `docker-compose.yml` обновлен (image: help1c-mcp:amd64)
 - [ ] Контейнеры запущены: `docker compose ps`
 - [ ] Health check работает: `Invoke-RestMethod http://localhost:8000/health`
 - [ ] Порт 8000 открыт в firewall
 - [ ] Клиенты могут подключиться: `Invoke-RestMethod http://SERVER_IP:8000/health`
 
-### Linux Server (ARM64)
-- [ ] Образ `help1c-mcp:arm64` собран на Windows
-- [ ] Файл `help1c-mcp-arm64.tar` создан
+### Linux Server (AMD64 или ARM64)
+- [ ] Собран образ для архитектуры сервера (`help1c-mcp:amd64` или `help1c-mcp:arm64`)
+- [ ] Создан соответствующий tar-файл (`help1c-mcp-amd64.tar` или `help1c-mcp-arm64.tar`)
 - [ ] Файлы скопированы в `/opt/help1c-mcp/`
-- [ ] .hbk файл на месте: `/opt/help1c-mcp/data/hbk/1c_documentation.hbk`
-- [ ] `docker-compose.yml` обновлен (image: help1c-mcp:arm64)
+- [ ] HBK-файл на месте: `/opt/help1c-mcp/data/hbk/shcntx_ru.hbk`
+- [ ] `docker-compose.yml` обновлен с image tag нужной архитектуры
 - [ ] Образ загружен: `docker images | grep help1c-mcp`
 - [ ] Контейнеры запущены: `docker compose ps`
 - [ ] Health check работает: `curl http://localhost:8000/health`

@@ -4,46 +4,50 @@ MCP-сервер для быстрого поиска по синтаксису 
 
 ## 📚 Документация
 
-- **[📖 DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md)** - Подробная инструкция по развертыванию на Windows Server и Linux Server (ARM64)
-- **[📋 ТЕХНИЧЕСКОЕ_ЗАДАНИЕ.md](ТЕХНИЧЕСКОЕ_ЗАДАНИЕ.md)** - Техническое задание проекта
-- **[📖 SETUP_GUIDE.md](SETUP_GUIDE.md)** - Инструкция по локальной разработке
+- **[📑 Каталог инструкций](docs/instructions/README.md)** - развертывание, локальная разработка и подключение MCP-клиентов
+- **[📖 DEPLOYMENT_GUIDE.md](docs/instructions/DEPLOYMENT_GUIDE.md)** - Развертывание на Windows 10/11 и Linux Server (AMD64/ARM64)
+- **[📖 SETUP_GUIDE.md](docs/instructions/SETUP_GUIDE.md)** - Инструкция по локальной разработке
 
 ## 🚀 Быстрый старт (локальная разработка)
 
 ### Системные требования
 - Windows 10/11 64-bit или Linux
 - Docker Desktop
+- 7-Zip для локального запуска Python-приложения вне Docker (в Docker-образе он уже установлен)
 - 4+ ГБ RAM
 - VS Code (опционально)
 
 ### Развертывание для локального тестирования
 
-```bash
+```powershell
 # 1. Клонировать проект
-git clone <repo-url> 1c-syntax-helper-mcp
+git clone https://github.com/Antonio1C/1c-syntax-helper-mcp.git
 cd 1c-syntax-helper-mcp
 
-# 2. Поместить .hbk файл документации
-copy "path\to\1c_documentation.hbk" "data\hbk\1c_documentation.hbk"
+# 2. Скопировать shcntx_ru.hbk из установленной справки 1С
+Copy-Item "C:\path\to\shcntx_ru.hbk" ".\data\hbk\shcntx_ru.hbk"
 
 # 3. Запустить контейнеры
 docker compose up -d
 
 # 4. Проверить доступность
-curl http://localhost:8000/health
+Invoke-RestMethod -Uri "http://localhost:8000/health"
 ```
+
+Файл `shcntx_ru.hbk` не входит в репозиторий. Для Linux используйте `cp /path/to/shcntx_ru.hbk data/hbk/shcntx_ru.hbk`.
 
 ### Для развертывания на сервер
 
-📖 **Полная инструкция**: [DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md)
+📖 **Полная инструкция**: [DEPLOYMENT_GUIDE.md](docs/instructions/DEPLOYMENT_GUIDE.md)
 
 **Краткий алгоритм:**
 
-1. **Для Windows Server (AMD64)**
+1. **Для Windows 10/11 (AMD64) и Linux Server (AMD64)**
    ```powershell
    docker build -t help1c-mcp:amd64 .
    docker save help1c-mcp:amd64 -o help1c-mcp-amd64.tar
-   # Скопировать .tar файл на сервер и загрузить через docker load
+  # Для Windows 10/11 используйте Docker Desktop с Linux containers.
+  # На целевой машине загрузите архив через docker load.
    ```
 
 2. **Для Linux Server (ARM64)**
@@ -55,52 +59,21 @@ curl http://localhost:8000/health
 
 ### Настройка VS Code для подключения к серверу
 
-Добавьте в настройки VS Code (`settings.json`):
+Создайте файл `.vscode/mcp.json` в проекте и добавьте HTTP-конфигурацию:
 
 ```json
 {
-  "mcp.servers": {
-    "1c-syntax-helper": {
-      "command": "curl",
-      "args": [
-        "-X", "POST",
-        "-H", "Content-Type: application/json", 
-        "-d", "@-",
-        "http://SERVER_IP:8000/mcp"
-      ]
+  "servers": {
+    "mcp-helper1c-http": {
+      "url": "http://SERVER_IP:8000/mcp",
+      "type": "http"
     }
-  }
+  },
+  "inputs": []
 }
 ```
 
-Замените `SERVER_IP` на IP адрес вашего сервера (например, `192.168.1.100` или `localhost` для локального тестирования).
-
-## 📁 Структура проекта
-
-```
-1c-syntax-helper-mcp/
-├── docker-compose.yml          # Оркестрация контейнеров
-├── Dockerfile                  # Образ MCP сервера (поддержка AMD64 и ARM64)
-├── requirements.txt            # Python зависимости
-├── .env.example                # Пример конфигурации
-├── src/                        # Исходный код
-│   ├── main.py                 # FastAPI приложение
-│   ├── core/                   # Ядро системы
-│   ├── parsers/                # Парсеры .hbk документации
-│   ├── search/                 # Модули поиска
-│   ├── handlers/               # Обработчики MCP
-│   ├── models/                 # Pydantic модели
-│   └── api/                    # API эндпоинты
-├── data/                       # Данные
-│   ├── hbk/                    # .hbk файл документации
-│   └── logs/                   # Логи приложения
-├── tests/                      # Тесты
-├── docs/                       # Документация
-│   ├── DEPLOYMENT_GUIDE.md     # Инструкция развертывания
-│   ├── SETUP_GUIDE.md          # Инструкция локальной разработки
-│   └── sprints/                # Отчеты о спринтах
-└── README.md                   # Этот файл
-```
+Замените `SERVER_IP` на IP-адрес сервера (например, `192.168.1.100`). Для локального тестирования укажите `localhost`.
 
 ## 🔧 Основные возможности
 
@@ -116,7 +89,7 @@ curl http://localhost:8000/health
 
 ### Быстрый запуск с переиндексацией
 
-```bash
+```powershell
 # Windows (bat)
 start_mcp_server.bat --reindex
 
@@ -127,7 +100,7 @@ start_mcp_server.bat --reindex
 REINDEX_ON_STARTUP=true
 ```
 
-**Подробнее**: [REINDEX_GUIDE.md](REINDEX_GUIDE.md)
+**Подробнее**: [REINDEX_GUIDE.md](docs/instructions/REINDEX_GUIDE.md)
 
 ## 🛠️ Разработка
 
@@ -139,22 +112,29 @@ REINDEX_ON_STARTUP=true
 
 ### Локальная разработка
 
-```bash
-# Создать виртуальное окружение
-python -m venv venv
-.\venv\Scripts\Activate.ps1  # Windows
-# source venv/bin/activate   # Linux/Mac
-
-# Установить зависимости
-pip install -r requirements.txt
+```powershell
+# Windows PowerShell
+python -m venv .venv
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy RemoteSigned
+.\.venv\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
 
 # Запустить в режиме разработки
 python -m uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-### Тестирование
+Для Linux используйте отдельный набор команд:
 
 ```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+python -m uvicorn src.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+### Тестирование
+
+```powershell
 # Запустить тесты
 python -m pytest tests/ -v
 
@@ -166,27 +146,29 @@ python -m pytest tests/ --cov=src --cov-report=html
 
 Документация обновляется при необходимости:
 
-```bash
+```powershell
 # 1. Остановить сервисы
-docker-compose down
+docker compose down
 
-# 2. Заменить .hbk файл
-copy "new_1c_documentation.hbk" "data\hbk\1c_documentation.hbk"
+# 2. Заменить HBK-файл (сохраните обязательное имя)
+Copy-Item "C:\path\to\shcntx_ru.hbk" "data\hbk\shcntx_ru.hbk"
 
 # 3. Запустить и переиндексировать
-docker-compose up -d
-curl -X POST http://localhost:8000/index/rebuild
+docker compose up -d
+Invoke-RestMethod -Uri "http://localhost:8000/index/rebuild" -Method Post
 ```
 
-**Подробнее**: [DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md#обновление-hbk-файла)
+**Подробнее**: [DEPLOYMENT_GUIDE.md](docs/instructions/DEPLOYMENT_GUIDE.md#обновление-hbk-файла)
 
 ## 📋 MCP Protocol
 
 Сервер реализует [Model Context Protocol 2025-06-18](https://modelcontextprotocol.io/specification/2025-06-18/index) со следующими tools:
 
-- `search_1c_syntax` - поиск функций/методов/объектов
-- `get_1c_function_details` - детальная информация о функции
-- `get_1c_object_info` - информация об объекте и его методах
+- `find_1c_help` - поиск справки по элементам 1С
+- `get_syntax_info` - полная информация об элементе и его синтаксисе
+- `get_quick_reference` - краткая справка об элементе
+- `search_by_context` - поиск с фильтром по контексту
+- `list_object_members` - список элементов объекта
 
 ## ⚡ Performance
 
@@ -199,11 +181,11 @@ curl -X POST http://localhost:8000/index/rebuild
 
 При возникновении проблем:
 
-1. Проверить логи: `docker-compose logs mcp-server`
-2. Проверить статус Elasticsearch: `curl http://localhost:9200/_cluster/health`
-3. Проверить статус индексации: `curl http://localhost:8000/index/status`
+1. Проверить логи: `docker compose logs mcp-server`
+2. Проверить статус Elasticsearch: `Invoke-RestMethod -Uri "http://localhost:9200/_cluster/health"`
+3. Проверить статус индексации: `Invoke-RestMethod -Uri "http://localhost:8000/index/status"`
 
-**Подробнее**: [DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md#-устранение-проблем)
+**Подробнее**: [DEPLOYMENT_GUIDE.md](docs/instructions/DEPLOYMENT_GUIDE.md#-устранение-проблем)
 
 ## 📄 Лицензия
 
