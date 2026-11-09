@@ -18,10 +18,6 @@ SUPPORTED_ENCODINGS = ["utf-8", "cp1251", "iso-8859-1"]
 LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 LOG_DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 
-# Rate limiting
-REQUESTS_PER_MINUTE = 60
-REQUESTS_PER_HOUR = 1000
-
 # Поиск
 MAX_SEARCH_RESULTS = 100
 SEARCH_TIMEOUT_SECONDS = 30

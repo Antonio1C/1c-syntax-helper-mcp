@@ -18,8 +18,8 @@ from src.api.routes.index import router as index_router
 from src.api.routes.metrics import router as metrics_router
 from src.api.routes.mcp import router as mcp_router
 
-# Import middleware and exception handlers
-from src.api.middleware.rate_limit import rate_limit_middleware
+# Import exception handlers
+from src.api.middleware.metrics import metrics_middleware
 from src.api.middleware.error_handler import (
     validation_exception_handler,
     parser_exception_handler,
@@ -77,8 +77,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Добавляем rate limiting middleware
-app.middleware("http")(rate_limit_middleware)
+app.middleware("http")(metrics_middleware)
 
 # Регистрируем обработчики исключений
 app.add_exception_handler(ValidationError, validation_exception_handler)

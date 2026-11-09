@@ -5,7 +5,6 @@ from fastapi import Depends
 
 from src.core.elasticsearch import ElasticsearchClient
 from src.core.metrics import get_metrics_collector, get_system_monitor
-from src.core.rate_limiter import get_rate_limiter
 from src.core.logging import get_logger
 from src.infrastructure.background.indexing_manager import get_indexing_manager as _get_indexing_manager, BackgroundIndexingManager
 
@@ -57,11 +56,6 @@ def get_es_client():
 def get_metrics():
     """Dependency для получения MetricsCollector."""
     return get_metrics_collector()
-
-
-def get_limiter():
-    """Dependency для получения RateLimiter."""
-    return get_rate_limiter()
 
 
 # ============================================================================
