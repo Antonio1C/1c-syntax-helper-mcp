@@ -4,15 +4,17 @@
 
 ## 📋 Содержание
 
-1. [Требования](#требования)
-2. [Подготовка Docker образа](#подготовка-docker-образа)
-3. [Развертывание на сервере](#развертывание-на-сервере)
-4. [Проверка работоспособности](#проверка-работоспособности)
-5. [Подключение клиентов](#подключение-клиентов)
-6. [Обновление .hbk файла](#обновление-hbk-файла)
-7. [Управление сервисом](#управление-сервисом)
+1. [Требования](#requirements)
+2. [Подготовка Docker образа](#docker-image)
+3. [Развертывание на сервере](#deployment)
+4. [Проверка работоспособности](#health-check)
+5. [Подключение клиентов](#clients)
+6. [Обновление .hbk файла](#hbk-update)
+7. [Управление сервисом](#service-management)
 
 ---
+
+<a id="requirements"></a>
 
 ## 🖥️ Требования
 
@@ -42,6 +44,8 @@ docker compose version
 ```
 
 ---
+
+<a id="docker-image"></a>
 
 ## 📦 Подготовка Docker образа
 
@@ -82,6 +86,8 @@ docker save help1c-mcp:arm64 -o help1c-mcp-arm64.tar
 ```
 
 ---
+
+<a id="deployment"></a>
 
 ## 🚀 Развертывание на сервере
 
@@ -218,6 +224,8 @@ mcp-1c-helper     Up 1 minute         0.0.0.0:8000->8000/tcp
 
 ---
 
+<a id="health-check"></a>
+
 ## ✅ Проверка работоспособности
 
 ### На сервере:
@@ -250,6 +258,8 @@ Invoke-RestMethod http://SERVER_IP:8000/health
 
 ---
 
+<a id="clients"></a>
+
 ## 💻 Подключение клиентов
 
 ### Настройка VS Code на клиентских машинах
@@ -280,6 +290,8 @@ Invoke-RestMethod http://SERVER_IP:8000/health
 4. В чате с AI попросите: "Найди справку по СтрДлина"
 
 ---
+
+<a id="hbk-update"></a>
 
 ## 🔄 Обновление .hbk файла
 
@@ -352,6 +364,8 @@ Invoke-RestMethod -Uri "http://localhost:8000/index/status"
 
 Запускать: `.\update-hbk.ps1`
 
+<a id="service-management"></a>
+
 ## Управление сервисом
 
 ```powershell
@@ -405,6 +419,8 @@ sudo systemctl status help1c-mcp
 В `docker-compose.yml` уже установлен `restart: unless-stopped`, поэтому контейнеры автоматически запустятся при загрузке сервера (если Docker Desktop настроен на автозапуск).
 
 ---
+
+<a id="troubleshooting"></a>
 
 ## 🛠️ Устранение проблем
 

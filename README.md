@@ -158,7 +158,7 @@ docker compose up -d
 Invoke-RestMethod -Uri "http://localhost:8000/index/rebuild" -Method Post
 ```
 
-**Подробнее**: [DEPLOYMENT_GUIDE.md](docs/instructions/DEPLOYMENT_GUIDE.md#обновление-hbk-файла)
+**Подробнее**: [DEPLOYMENT_GUIDE.md](docs/instructions/DEPLOYMENT_GUIDE.md#hbk-update)
 
 ## 📋 MCP Protocol
 
@@ -185,7 +185,7 @@ Invoke-RestMethod -Uri "http://localhost:8000/index/rebuild" -Method Post
 2. Проверить статус Elasticsearch: `Invoke-RestMethod -Uri "http://localhost:9200/_cluster/health"`
 3. Проверить статус индексации: `Invoke-RestMethod -Uri "http://localhost:8000/index/status"`
 
-**Подробнее**: [DEPLOYMENT_GUIDE.md](docs/instructions/DEPLOYMENT_GUIDE.md#-устранение-проблем)
+**Подробнее**: [DEPLOYMENT_GUIDE.md](docs/instructions/DEPLOYMENT_GUIDE.md#troubleshooting)
 
 ## 📄 Лицензия
 
